@@ -129,3 +129,87 @@ async def list_workspaces(
             }
             for row in result
         ]
+        
+        
+@app.get("/api/workspaces/{workspace_id}")
+async def get_workspace(
+    workspace_id: UUID,
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+        result = connection.execute(
+            text("""
+                SELECT
+                    w.id,
+                    w.name,
+                    wm.role
+                FROM public.workspaces w
+                JOIN public.workspace_members wm
+                    ON w.id = wm.workspace_id
+                WHERE w.id = :workspace_id
+                  AND wm.user_id = :user_id
+            """),
+            {
+                "workspace_id": workspace_id,
+                "user_id": UUID(user["id"])
+            }
+        )
+
+        workspace = result.mappings().first()
+
+    if not workspace:
+        raise HTTPException(
+            status_code=404,
+            detail="Workspace not found"
+        )
+
+    return {
+        "id": str(workspace["id"]),
+        "name": workspace["name"],
+        "role": workspace["role"]
+    }
+@app.get("/api/workspaces/{workspace_id}/members")
+async def get_workspace_members(
+    workspace_id: UUID,
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+
+        membership = connection.execute(
+            text("""
+                SELECT role
+                FROM public.workspace_members
+                WHERE workspace_id = :workspace_id
+                  AND user_id = :user_id
+            """),
+            {
+                "workspace_id": workspace_id,
+                "user_id": UUID(user["id"])
+            }
+        ).first()
+
+        if not membership:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not a member of this workspace"
+            )
+
+        members = connection.execute(
+            text("""
+                SELECT user_id, role, created_at
+                FROM public.workspace_members
+                WHERE workspace_id = :workspace_id
+                ORDER BY created_at
+            """),
+            {"workspace_id": workspace_id}
+        ).mappings().all()
+
+    return [
+        {
+            "user_id": str(member["user_id"]),
+            "role": member["role"],
+            "joined_at": member["created_at"].isoformat()
+            if member["created_at"] else None
+        }
+        for member in members
+    ]
