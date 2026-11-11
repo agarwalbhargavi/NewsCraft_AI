@@ -1,45 +1,43 @@
+/* ==========================================
+   GLOBAL
+========================================== */
+
 .container {
-  max-width: 900px;
-  margin: 60px auto;
-  padding: 40px;
-  text-align: center;
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 30px;
   font-family: Arial, sans-serif;
+  color: #243b53;
 }
 
 h1 {
   font-size: 42px;
+  margin: 0 0 12px;
   color: #243b53;
 }
 
-.status-card {
-  background: #f1f5f9;
-  padding: 30px;
-  margin: 30px auto;
-  border-radius: 12px;
-  max-width: 500px;
+h2 {
+  color: #243b53;
 }
 
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
+.subtitle {
+  font-size: 17px;
+  color: #64748b;
 }
 
-input {
-  padding: 13px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font-size: 15px;
-}
+/* ==========================================
+   BUTTONS
+========================================== */
 
 button {
-  padding: 13px 25px;
-  background: #2563eb;
-  color: white;
+  padding: 12px 20px;
   border: none;
   border-radius: 8px;
+  background: #2563eb;
+  color: white;
   font-size: 15px;
   cursor: pointer;
+  transition: 0.2s;
 }
 
 button:hover:not(:disabled) {
@@ -47,17 +45,124 @@ button:hover:not(:disabled) {
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
+.secondary-btn {
+  background: #e2e8f0;
+  color: #243b53;
+}
+
+.secondary-btn:hover {
+  background: #cbd5e1 !important;
+}
+
+/* ==========================================
+   FORMS
+========================================== */
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+input {
+  padding: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #2563eb;
+}
+
+/* ==========================================
+   AUTHENTICATION
+========================================== */
+
+.auth-container {
+  max-width: 650px;
+  text-align: center;
+  margin-top: 80px;
+}
+
+.status-card {
+  background: #f1f5f9;
+  padding: 35px;
+  margin-top: 30px;
+  border-radius: 14px;
+}
+
+/* ==========================================
+   MAIN DASHBOARD
+========================================== */
+
+.dashboard-container {
+  max-width: 1100px;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 35px;
+  gap: 20px;
+}
+
+.logout-btn {
+  background: #ef4444;
+}
+
+.logout-btn:hover {
+  background: #dc2626 !important;
+}
+
+.welcome-card {
+  background: #eff6ff;
+  padding: 25px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+}
+
+.dashboard-card {
+  background: #f8fafc;
+  padding: 30px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 25px;
+}
+
+/* ==========================================
+   WORKSPACE LIST
+========================================== */
+
+.workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 20px;
+}
+
 .workspace-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
   background: white;
   border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 15px;
-  margin-top: 12px;
-  text-align: left;
+  color: #243b53;
+  padding: 20px;
+  width: 100%;
+}
+
+.workspace-item:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #2563eb;
 }
 
 .workspace-item h3 {
@@ -67,4 +172,184 @@ button:disabled {
 .workspace-item p {
   margin: 0;
   color: #64748b;
+}
+
+.workspace-arrow {
+  font-size: 26px;
+  color: #2563eb;
+}
+
+/* ==========================================
+   WORKSPACE DASHBOARD
+========================================== */
+
+.back-btn {
+  background: transparent;
+  color: #2563eb;
+  padding-left: 0;
+  margin-bottom: 20px;
+}
+
+.back-btn:hover {
+  background: transparent !important;
+  color: #1d4ed8;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #eff6ff;
+  padding: 25px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+}
+
+.workspace-header h2 {
+  margin: 0;
+}
+
+.role-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  padding: 7px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+/* ==========================================
+   TABS
+========================================== */
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 30px;
+}
+
+.tabs button {
+  background: transparent;
+  color: #64748b;
+  border-radius: 0;
+  padding: 15px 20px;
+}
+
+.tabs button:hover {
+  background: #f1f5f9 !important;
+}
+
+.tabs .active-tab {
+  color: #2563eb;
+  border-bottom: 3px solid #2563eb;
+  font-weight: bold;
+}
+
+/* ==========================================
+   OVERVIEW CARDS
+========================================== */
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.stat-number {
+  font-size: 36px;
+  font-weight: bold;
+  color: #2563eb;
+  margin: 15px 0;
+}
+
+.role-text {
+  font-size: 26px;
+  text-transform: capitalize;
+}
+
+/* ==========================================
+   MEMBERS
+========================================== */
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.member-item p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* ==========================================
+   MESSAGES
+========================================== */
+
+.message {
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+/* ==========================================
+   RESPONSIVE DESIGN
+========================================== */
+
+@media (max-width: 768px) {
+  .container {
+    padding: 20px;
+    margin: 15px auto;
+  }
+
+  h1 {
+    font-size: 32px;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
 }
