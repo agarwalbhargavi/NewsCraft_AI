@@ -1232,3 +1232,97 @@ async def gmail_status(
         if result["has_refresh_token"]
         else None
     }
+    
+# ============================================================
+# LIST GMAIL MESSAGES
+# ============================================================
+
+@app.get("/api/gmail/messages")
+async def list_gmail_messages(
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+        gmail = connection.execute(
+            text("""
+                SELECT encrypted_refresh_token
+                FROM public.gmail_connections
+                WHERE user_id = :user_id
+            """),
+            {"user_id": UUID(user["id"])}
+        ).mappings().first()
+
+    if not gmail or not gmail["encrypted_refresh_token"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Gmail before viewing messages"
+        )
+
+    refresh_token = get_gmail_cipher().decrypt(
+        gmail["encrypted_refresh_token"].encode()
+    ).decode()
+
+    credentials = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=GMAIL_SCOPES
+    )
+
+    try:
+        credentials.refresh(GoogleRequest())
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers={
+                    "Authorization": f"Bearer {credentials.token}"
+                },
+                params={"maxResults": 20}
+            )
+
+            response.raise_for_status()
+            message_ids = response.json().get("messages", [])
+
+            messages = []
+
+            for item in message_ids:
+                detail = await client.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{item['id']}",
+                    headers={
+                        "Authorization": f"Bearer {credentials.token}"
+                    },
+                    params={
+                        "format": "metadata",
+                        "metadataHeaders": [
+                            "From",
+                            "Subject",
+                            "Date"
+                        ]
+                    }
+                )
+
+                detail.raise_for_status()
+                data = detail.json()
+
+                headers = {
+                    header["name"].lower(): header["value"]
+                    for header in data.get("payload", {}).get("headers", [])
+                }
+
+                messages.append({
+                    "id": item["id"],
+                    "from": headers.get("from", "Unknown"),
+                    "subject": headers.get("subject", "(No Subject)"),
+                    "date": headers.get("date", ""),
+                    "snippet": data.get("snippet", "")
+                })
+
+        return {"messages": messages}
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve Gmail messages"
+        )
