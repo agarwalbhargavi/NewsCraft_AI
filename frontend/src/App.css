@@ -352,4 +352,215 @@ input:focus {
   .tabs {
     overflow-x: auto;
   }
+
+  /* ==========================================
+   TEAM INVITATIONS
+========================================== */
+
+.invite-panel {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.invite-panel h3 {
+  margin-top: 0;
+  color: #1e293b;
+}
+
+.invite-panel p {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.invite-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.invite-panel input,
+.invite-panel select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  box-sizing: border-box;
+}
+
+.invite-panel button {
+  width: fit-content;
+}
+
+.invitation-result {
+  margin-top: 24px;
+  padding: 18px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+}
+
+.invitation-result h4 {
+  margin-top: 0;
+  color: #065f46;
+}
+
+.invitation-result input {
+  margin: 12px 0;
+  background: white;
+}
+
+.invitation-result button {
+  background: #059669;
+}
+
+.invitation-result button:hover {
+  background: #047857;
+}
+
+/* ==========================================
+   NEWSLETTER MANAGEMENT
+========================================== */
+
+.newsletter-form {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.newsletter-form h3 {
+  margin-top: 0;
+  color: #1e293b;
+}
+
+.newsletter-form p {
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.newsletter-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.newsletter-form input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+.newsletter-form button {
+  width: fit-content;
+}
+
+/* Newsletter list */
+
+.newsletter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.newsletter-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.newsletter-item h3 {
+  margin: 0 0 10px;
+  color: #1e293b;
+}
+
+.newsletter-item p {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.newsletter-item button {
+  white-space: nowrap;
+}
+
+/* Newsletter status */
+
+.newsletter-status {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Empty state */
+
+.newsletter-empty {
+  margin-top: 24px;
+  padding: 32px;
+  text-align: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.newsletter-empty h3 {
+  margin-top: 0;
+  color: #334155;
+}
+
+.newsletter-empty p {
+  color: #64748b;
+}
+
+/* Newsletter details */
+
+.newsletter-details h2 {
+  margin-top: 20px;
+  color: #1e293b;
+}
+
+.newsletter-info {
+  padding: 18px;
+  margin-top: 20px;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.newsletter-info p {
+  margin: 10px 0;
+}
+
+@media (max-width: 600px) {
+  .newsletter-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .newsletter-item button {
+    width: 100%;
+  }
 }

@@ -39,6 +39,38 @@ function App() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
 
+
+  // ==========================================
+// NEWSLETTERS
+// ==========================================
+
+const [newsletters, setNewsletters] = useState([]);
+const [newsletterTitle, setNewsletterTitle] = useState("");
+
+const [showNewsletterForm, setShowNewsletterForm] = useState(false);
+const [creatingNewsletter, setCreatingNewsletter] = useState(false);
+const [loadingNewsletters, setLoadingNewsletters] = useState(false);
+
+const [selectedNewsletter, setSelectedNewsletter] = useState(null);
+  // ==========================================
+  // INVITATIONS
+  // ==========================================
+
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("editor");
+
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [invitationLink, setInvitationLink] = useState("");
+
+  const [inviting, setInviting] = useState(false);
+  const [acceptingInvitation, setAcceptingInvitation] = useState(false);
+
+  // Read invitation token from URL.
+  const [inviteToken, setInviteToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("invite") || "";
+  });
+
   // ==========================================
   // INITIAL AUTHENTICATION
   // ==========================================
@@ -138,7 +170,8 @@ function App() {
           email,
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            // Preserve invitation token during email verification.
+            emailRedirectTo: window.location.href,
           },
         });
 
@@ -252,36 +285,63 @@ function App() {
   // ==========================================
 
   async function openWorkspace(workspaceId) {
-    setLoadingWorkspace(true);
-    setMessage("");
-    setMembers([]);
+  setLoadingWorkspace(true);
+  setMessage("");
+  setMembers([]);
+  setNewsletters([]);
 
-    try {
-      const [workspaceData, membersData] = await Promise.all([
+  try {
+    const [workspaceData, membersData, newslettersData] =
+      await Promise.all([
         authenticatedFetch(`/api/workspaces/${workspaceId}`),
-        authenticatedFetch(`/api/workspaces/${workspaceId}/members`),
+
+        authenticatedFetch(
+          `/api/workspaces/${workspaceId}/members`
+        ),
+
+        authenticatedFetch(
+          `/api/workspaces/${workspaceId}/newsletters`
+        ),
       ]);
 
-      setSelectedWorkspace(workspaceData);
-      setMembers(membersData);
-      setActiveTab("overview");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoadingWorkspace(false);
-    }
+    setSelectedWorkspace(workspaceData);
+    setMembers(membersData);
+    setNewsletters(newslettersData);
+
+    setSelectedNewsletter(null);
+    setActiveTab("overview");
+
+    setShowInviteForm(false);
+    setInvitationLink("");
+    setShowNewsletterForm(false);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setLoadingWorkspace(false);
   }
+}
 
   // ==========================================
   // BACK TO WORKSPACES
   // ==========================================
 
-  function backToWorkspaces() {
-    setSelectedWorkspace(null);
-    setMembers([]);
-    setActiveTab("overview");
-    setMessage("");
-  }
+function backToWorkspaces() {
+  setSelectedWorkspace(null);
+  setSelectedNewsletter(null);
+
+  setMembers([]);
+  setNewsletters([]);
+
+  setActiveTab("overview");
+
+  setShowInviteForm(false);
+  setInvitationLink("");
+
+  setShowNewsletterForm(false);
+  setNewsletterTitle("");
+
+  setMessage("");
+}
 
   // ==========================================
   // MEMBER DISPLAY NAME
@@ -293,6 +353,173 @@ function App() {
     }
 
     return `Member ${member.user_id.substring(0, 8)}...`;
+  }
+
+// ==========================================
+// LOAD NEWSLETTERS
+// ==========================================
+
+async function loadNewsletters(workspaceId) {
+  setLoadingNewsletters(true);
+
+  try {
+    const data = await authenticatedFetch(
+      `/api/workspaces/${workspaceId}/newsletters`
+    );
+
+    setNewsletters(data);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setLoadingNewsletters(false);
+  }
+}
+
+
+// ==========================================
+// CREATE NEWSLETTER
+// ==========================================
+
+async function createNewsletter(event) {
+  event.preventDefault();
+
+  if (!selectedWorkspace) return;
+
+  const title = newsletterTitle.trim();
+
+  if (title.length < 3) {
+    setMessage("Newsletter title must contain at least 3 characters.");
+    return;
+  }
+
+  setCreatingNewsletter(true);
+  setMessage("");
+
+  try {
+    await authenticatedFetch(
+      `/api/workspaces/${selectedWorkspace.id}/newsletters`,
+      {
+        method: "POST",
+        body: JSON.stringify({ title }),
+      }
+    );
+
+    setNewsletterTitle("");
+    setShowNewsletterForm(false);
+
+    await loadNewsletters(selectedWorkspace.id);
+
+    setMessage("Newsletter created successfully!");
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setCreatingNewsletter(false);
+  }
+}
+
+
+// ==========================================
+// OPEN NEWSLETTER
+// ==========================================
+
+function openNewsletter(newsletter) {
+  setSelectedNewsletter(newsletter);
+  setMessage("");
+}
+
+  // ==========================================
+  // GENERATE INVITATION
+  // ==========================================
+
+  async function createInvitation(event) {
+    event.preventDefault();
+
+    if (!selectedWorkspace || selectedWorkspace.role !== "admin") {
+      setMessage("Only workspace administrators can invite members.");
+      return;
+    }
+
+    setInviting(true);
+    setMessage("");
+    setInvitationLink("");
+
+    try {
+      const data = await authenticatedFetch(
+        `/api/workspaces/${selectedWorkspace.id}/invitations`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: inviteEmail.trim().toLowerCase(),
+            role: inviteRole,
+          }),
+        }
+      );
+
+      setInvitationLink(data.invitation_link);
+      setInviteEmail("");
+
+      setMessage(
+        "Invitation created successfully! Copy the link and share it."
+      );
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  // ==========================================
+  // COPY INVITATION LINK
+  // ==========================================
+
+  async function copyInvitationLink() {
+    try {
+      await navigator.clipboard.writeText(invitationLink);
+      setMessage("Invitation link copied to clipboard!");
+    } catch {
+      setMessage(
+        "Unable to copy automatically. Select the link and copy it manually."
+      );
+    }
+  }
+
+  // ==========================================
+  // ACCEPT INVITATION
+  // ==========================================
+
+  async function acceptInvitation() {
+    if (!inviteToken || acceptingInvitation) return;
+
+    setAcceptingInvitation(true);
+    setMessage("");
+
+    try {
+      const data = await authenticatedFetch(
+        `/api/invitations/accept?token=${encodeURIComponent(inviteToken)}`,
+        {
+          method: "POST",
+        }
+      );
+
+      // Remove token from URL after successful acceptance.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invite");
+
+      window.history.replaceState({}, "", url.toString());
+
+      setInviteToken("");
+      setMessage(data.message);
+
+      // Refresh workspace list.
+      await loadWorkspaces();
+
+      // Open the workspace the user just joined.
+      await openWorkspace(data.workspace_id);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setAcceptingInvitation(false);
+    }
   }
 
   // ==========================================
@@ -323,6 +550,13 @@ function App() {
 
         <div className="status-card">
           <h2>{isSignup ? "Create Account" : "Login"}</h2>
+
+          {inviteToken && (
+            <p className="message">
+              You've been invited to join a NewsCraft AI workspace.
+              Please log in or create an account to continue.
+            </p>
+          )}
 
           <form onSubmit={handleAuth}>
             <input
@@ -368,6 +602,56 @@ function App() {
           >
             {isSignup ? "Go to Login" : "Create Account"}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // INVITATION ACCEPTANCE SCREEN
+  // ==========================================
+
+  if (inviteToken) {
+    return (
+      <div className="container auth-container">
+        <h1>NewsCraft AI</h1>
+
+        <p className="subtitle">
+          Workspace Invitation
+        </p>
+
+        <div className="status-card">
+          <h2>You've Been Invited!</h2>
+
+          <p>
+            You're logged in as:
+          </p>
+
+          <p>
+            <strong>{session.user.email}</strong>
+          </p>
+
+          <p>
+            Click below to accept the invitation and join the workspace.
+          </p>
+
+          <button
+            onClick={acceptInvitation}
+            disabled={acceptingInvitation}
+          >
+            {acceptingInvitation
+              ? "Joining Workspace..."
+              : "Accept Invitation"}
+          </button>
+
+          <button
+            className="secondary-btn"
+            onClick={handleLogout}
+          >
+            Switch Account
+          </button>
+
+          {message && <p className="message">{message}</p>}
         </div>
       </div>
     );
@@ -442,10 +726,13 @@ function App() {
 
             <div className="dashboard-card">
               <h3>Newsletters</h3>
-              <p className="stat-number">—</p>
-              <p>Newsletter management coming soon</p>
-            </div>
 
+              <p className="stat-number">
+                {newsletters.length}
+              </p>
+
+              <p>Total newsletters in this workspace</p>
+            </div>
             <div className="dashboard-card">
               <h3>Your Role</h3>
               <p className="stat-number role-text">
@@ -464,11 +751,83 @@ function App() {
               <h3>Workspace Members</h3>
 
               {selectedWorkspace.role === "admin" && (
-                <button disabled>
-                  + Invite Member — Coming Soon
+                <button
+                  onClick={() => {
+                    setShowInviteForm(!showInviteForm);
+                    setInvitationLink("");
+                    setMessage("");
+                  }}
+                >
+                  {showInviteForm
+                    ? "Cancel"
+                    : "+ Invite Member"}
                 </button>
               )}
             </div>
+
+            {/* INVITATION FORM */}
+
+            {showInviteForm && selectedWorkspace.role === "admin" && (
+              <div className="invite-panel">
+                <h3>Invite a Team Member</h3>
+
+                <p>
+                  Invite faculty members or student editors to collaborate
+                  on your department newsletter.
+                </p>
+
+                <form onSubmit={createInvitation}>
+                  <input
+                    type="email"
+                    placeholder="Enter email address"
+                    value={inviteEmail}
+                    onChange={(event) =>
+                      setInviteEmail(event.target.value)
+                    }
+                    required
+                  />
+
+                  <select
+                    value={inviteRole}
+                    onChange={(event) =>
+                      setInviteRole(event.target.value)
+                    }
+                  >
+                    <option value="editor">Editor</option>
+                    <option value="faculty">Faculty</option>
+                  </select>
+
+                  <button type="submit" disabled={inviting}>
+                    {inviting
+                      ? "Generating..."
+                      : "Generate Invitation"}
+                  </button>
+                </form>
+
+                {invitationLink && (
+                  <div className="invitation-result">
+                    <h4>Invitation Link Generated</h4>
+
+                    <p>
+                      Share this link with the invited person.
+                      It expires after seven days.
+                    </p>
+
+                    <input
+                      type="text"
+                      value={invitationLink}
+                      readOnly
+                    />
+
+                    <button onClick={copyInvitationLink}>
+                      Copy Invitation Link
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MEMBERS LIST */}
 
             {members.length === 0 ? (
               <p>No members found.</p>
@@ -481,6 +840,7 @@ function App() {
                   >
                     <div>
                       <strong>{getMemberName(member)}</strong>
+
                       <p>
                         Joined:{" "}
                         {member.joined_at
@@ -498,24 +858,219 @@ function App() {
                 ))}
               </div>
             )}
+
+            {message && <p className="message">{message}</p>}
           </div>
         )}
 
-        {/* NEWSLETTERS */}
+{/* ==========================================
+    NEWSLETTERS
+========================================== */}
 
-        {activeTab === "newsletters" && (
-          <div className="dashboard-card">
-            <h3>Newsletters</h3>
+{activeTab === "newsletters" && (
+  <div className="dashboard-card">
+
+    {selectedNewsletter ? (
+
+      // ======================================
+      // SELECTED NEWSLETTER
+      // ======================================
+
+      <div className="newsletter-details">
+
+        <button
+          className="back-btn"
+          onClick={() => setSelectedNewsletter(null)}
+        >
+          ← Back to Newsletters
+        </button>
+
+        <h2>{selectedNewsletter.title}</h2>
+
+        <div className="newsletter-info">
+
+          <p>
+            <strong>Status:</strong>{" "}
+            <span className="newsletter-status">
+              {selectedNewsletter.status}
+            </span>
+          </p>
+
+          <p>
+            <strong>Created:</strong>{" "}
+            {selectedNewsletter.created_at
+              ? new Date(
+                  selectedNewsletter.created_at
+                ).toLocaleDateString()
+              : "Unknown"}
+          </p>
+
+        </div>
+
+        <div className="newsletter-empty">
+
+          <h3>Newsletter Articles</h3>
+
+          <p>
+            No articles added yet.
+          </p>
+
+          <button disabled>
+            + Add Article — Coming Soon
+          </button>
+
+        </div>
+
+      </div>
+
+    ) : (
+
+      // ======================================
+      // NEWSLETTER LIST
+      // ======================================
+
+      <>
+
+        <div className="section-header">
+
+          <h3>Newsletters</h3>
+
+          {["admin", "editor"].includes(
+            selectedWorkspace.role
+          ) && (
+
+            <button
+              onClick={() => {
+                setShowNewsletterForm(
+                  !showNewsletterForm
+                );
+
+                setMessage("");
+              }}
+            >
+              {showNewsletterForm
+                ? "Cancel"
+                : "+ Create Newsletter"}
+            </button>
+
+          )}
+
+        </div>
+
+        {/* CREATE NEWSLETTER FORM */}
+
+        {showNewsletterForm && (
+          <div className="newsletter-form">
+
+            <h3>Create New Newsletter</h3>
 
             <p>
-              No newsletters created yet.
+              Create a newsletter for your department.
+              You can add articles and photographs later.
             </p>
 
-            <button disabled>
-              + Create Newsletter — Coming Soon
-            </button>
+            <form onSubmit={createNewsletter}>
+
+              <input
+                type="text"
+                placeholder="e.g. ECE Department Newsletter — November 2026"
+                value={newsletterTitle}
+                onChange={(event) =>
+                  setNewsletterTitle(event.target.value)
+                }
+                minLength={3}
+                maxLength={200}
+                required
+              />
+
+              <button
+                type="submit"
+                disabled={creatingNewsletter}
+              >
+                {creatingNewsletter
+                  ? "Creating..."
+                  : "Create Newsletter"}
+              </button>
+
+            </form>
+
           </div>
         )}
+
+        {/* NEWSLETTER LIST */}
+
+        {loadingNewsletters ? (
+
+          <p>Loading newsletters...</p>
+
+        ) : newsletters.length === 0 ? (
+
+          <div className="newsletter-empty">
+
+            <h3>No Newsletters Yet</h3>
+
+            <p>
+              Create your first newsletter to get started.
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="newsletter-list">
+
+            {newsletters.map((newsletter) => (
+
+              <div
+                key={newsletter.id}
+                className="newsletter-item"
+              >
+
+                <div>
+
+                  <h3>{newsletter.title}</h3>
+
+                  <p>
+                    Created:{" "}
+                    {newsletter.created_at
+                      ? new Date(
+                          newsletter.created_at
+                        ).toLocaleDateString()
+                      : "Unknown"}
+                  </p>
+
+                  <span className="newsletter-status">
+                    {newsletter.status}
+                  </span>
+
+                </div>
+
+                <button
+                  onClick={() =>
+                    openNewsletter(newsletter)
+                  }
+                >
+                  Open Newsletter →
+                </button>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        )}
+
+        {message && (
+          <p className="message">{message}</p>
+        )}
+
+      </>
+
+    )}
+
+  </div>
+)}
       </div>
     );
   }
