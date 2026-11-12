@@ -82,7 +82,18 @@ const [loadingArticles, setLoadingArticles] = useState(false);
     const params = new URLSearchParams(window.location.search);
     return params.get("invite") || "";
   });
+// ==========================================
+// GMAIL INTEGRATION
+// ==========================================
 
+const [gmailStatus, setGmailStatus] = useState({
+  connected: false,
+  email: null,
+});
+
+const [gmailLoading, setGmailLoading] = useState(false);
+const [gmailConnecting, setGmailConnecting] = useState(false);
+const [gmailMessage, setGmailMessage] = useState("");
   // ==========================================
   // INITIAL AUTHENTICATION
   // ==========================================
@@ -250,47 +261,109 @@ const [loadingArticles, setLoadingArticles] = useState(false);
     }
   }
 
-  useEffect(() => {
-    if (session?.user?.id) {
-      loadWorkspaces();
-    } else {
-      setWorkspaces([]);
-    }
-  }, [session?.user?.id]);
+// ==========================================
+// LOAD WORKSPACES
+// ==========================================
 
-  // ==========================================
-  // CREATE WORKSPACE
-  // ==========================================
+async function loadWorkspaces() {
+  setFetchingWorkspaces(true);
 
-  async function createWorkspace(event) {
-    event.preventDefault();
-
-    const name = workspaceName.trim();
-
-    if (name.length < 3) {
-      setMessage("Workspace name must have at least 3 characters.");
-      return;
-    }
-
-    setWorkspaceLoading(true);
-    setMessage("");
-
-    try {
-      await authenticatedFetch("/api/workspaces", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
-
-      setWorkspaceName("");
-      await loadWorkspaces();
-
-      setMessage("Workspace created successfully!");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setWorkspaceLoading(false);
-    }
+  try {
+    const data = await authenticatedFetch("/api/workspaces");
+    setWorkspaces(data);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setFetchingWorkspaces(false);
   }
+}
+
+
+// ==========================================
+// LOAD WORKSPACES AND GMAIL STATUS
+// ==========================================
+
+useEffect(() => {
+  if (session?.user?.id) {
+    loadWorkspaces();
+    checkGmailStatus();
+  } else {
+    setWorkspaces([]);
+    setGmailStatus({
+      connected: false,
+      email: null,
+    });
+  }
+}, [session?.user?.id]);
+
+
+// ==========================================
+// HANDLE GMAIL OAUTH CALLBACK
+// ==========================================
+
+useEffect(() => {
+  if (!session?.user?.id) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("gmail");
+
+  if (!result) return;
+
+  if (result === "connected") {
+    setGmailMessage("Gmail connected successfully!");
+    checkGmailStatus();
+  } else {
+    setGmailMessage(
+      "Gmail connection was not completed. Please try again."
+    );
+  }
+
+  params.delete("gmail");
+
+  const remainingQuery = params.toString();
+
+  window.history.replaceState(
+    {},
+    "",
+    window.location.pathname +
+      (remainingQuery ? `?${remainingQuery}` : "")
+  );
+}, [session?.user?.id]);
+
+
+// ==========================================
+// CREATE WORKSPACE
+// ==========================================
+
+async function createWorkspace(event) {
+  event.preventDefault();
+
+  const name = workspaceName.trim();
+
+  if (name.length < 3) {
+    setMessage("Workspace name must have at least 3 characters.");
+    return;
+  }
+
+  setWorkspaceLoading(true);
+  setMessage("");
+
+  try {
+    await authenticatedFetch("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+
+    setWorkspaceName("");
+    await loadWorkspaces();
+
+    setMessage("Workspace created successfully!");
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setWorkspaceLoading(false);
+  }
+}
 
   // ==========================================
   // OPEN WORKSPACE
@@ -610,7 +683,46 @@ async function createArticle(event) {
       setAcceptingInvitation(false);
     }
   }
+// ==========================================
+// CHECK GMAIL CONNECTION
+// ==========================================
 
+async function checkGmailStatus() {
+  setGmailLoading(true);
+
+  try {
+    const data = await authenticatedFetch("/api/gmail/status");
+
+    setGmailStatus(data);
+  } catch (error) {
+    setGmailMessage(error.message);
+  } finally {
+    setGmailLoading(false);
+  }
+}
+
+
+// ==========================================
+// CONNECT GMAIL
+// ==========================================
+
+async function connectGmail() {
+  setGmailConnecting(true);
+  setGmailMessage("");
+
+  try {
+    const data = await authenticatedFetch("/api/gmail/connect");
+
+    if (!data.authorization_url) {
+      throw new Error("Google authorization URL was not returned.");
+    }
+
+    window.location.assign(data.authorization_url);
+  } catch (error) {
+    setGmailMessage(error.message);
+    setGmailConnecting(false);
+  }
+}
   // ==========================================
   // LOADING SCREEN
   // ==========================================
@@ -1274,7 +1386,61 @@ async function createArticle(event) {
           Logged in as: <strong>{session.user.email}</strong>
         </p>
       </div>
+      {/* ==========================================
+    GMAIL INTEGRATION
+========================================== */}
 
+<div className="dashboard-card gmail-card">
+  <div className="section-header">
+    <h2>Gmail Integration</h2>
+
+    <span
+      className={
+        gmailStatus.connected
+          ? "gmail-badge connected"
+          : "gmail-badge disconnected"
+      }
+    >
+      {gmailStatus.connected ? "Connected" : "Not Connected"}
+    </span>
+  </div>
+
+  {gmailLoading ? (
+    <p>Checking Gmail connection...</p>
+  ) : gmailStatus.connected ? (
+    <>
+      <p>Your Gmail account is connected to NewsCraft AI.</p>
+
+      <p>
+        <strong>Connected account:</strong>{" "}
+        {gmailStatus.email}
+      </p>
+
+      <p>
+        You can now proceed to email browsing and importing.
+      </p>
+    </>
+  ) : (
+    <>
+      <p>
+        Connect your Gmail account to import department
+        achievements, faculty updates, and event emails
+        directly into your newsletters.
+      </p>
+
+      <button
+        onClick={connectGmail}
+        disabled={gmailConnecting}
+      >
+        {gmailConnecting ? "Connecting..." : "Connect Gmail"}
+      </button>
+    </>
+  )}
+
+  {gmailMessage && (
+    <p className="message">{gmailMessage}</p>
+  )}
+</div>
       {/* CREATE WORKSPACE */}
 
       <div className="dashboard-card">
