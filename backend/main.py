@@ -14,6 +14,16 @@ from uuid import UUID
 
 import httpx
 
+import base64
+import json
+import hmac
+
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from cryptography.fernet import Fernet
+from google_auth_oauthlib.flow import Flow
+from google.auth.transport.requests import Request as GoogleRequest
+from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -948,3 +958,277 @@ async def list_articles(
         }
         for article in articles
     ]
+    
+# ============================================================
+# GMAIL OAUTH CONFIGURATION
+# ============================================================
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI",
+    "http://localhost:8000/api/gmail/callback"
+)
+
+GMAIL_ENCRYPTION_KEY = os.getenv("GMAIL_ENCRYPTION_KEY")
+
+GMAIL_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly"
+]
+
+
+def get_gmail_cipher():
+    if not GMAIL_ENCRYPTION_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Gmail encryption key is not configured"
+        )
+
+    return Fernet(GMAIL_ENCRYPTION_KEY.encode())
+
+
+def create_google_flow():
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth credentials are not configured"
+        )
+
+    client_config = {
+        "web": {
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [GOOGLE_REDIRECT_URI],
+        }
+    }
+
+    return Flow.from_client_config(
+        client_config,
+        scopes=GMAIL_SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI
+    )
+    
+# ============================================================
+# CONNECT GMAIL
+# ============================================================
+
+@app.get("/api/gmail/connect")
+async def connect_gmail(
+    user=Depends(get_current_user)
+):
+    flow = create_google_flow()
+
+    # Generate secure OAuth state.
+    state = secrets.token_urlsafe(32)
+
+    state_hash = hashlib.sha256(
+        state.encode()
+    ).hexdigest()
+
+    expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(minutes=10)
+    )
+
+    # Generate PKCE verifier and challenge.
+    verifier = secrets.token_urlsafe(64)
+
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()
+    ).decode().rstrip("=")
+
+    with engine.begin() as connection:
+
+        connection.execute(
+            text("""
+                INSERT INTO public.gmail_oauth_states
+                    (state_hash, user_id, code_verifier, expires_at)
+                VALUES
+                    (:state_hash, :user_id, :code_verifier, :expires_at)
+            """),
+            {
+                "state_hash": state_hash,
+                "user_id": UUID(user["id"]),
+                "code_verifier": verifier,
+                "expires_at": expires_at
+            }
+        )
+
+    authorization_url, _ = flow.authorization_url(
+        access_type="offline",
+        prompt="consent",
+        include_granted_scopes="false",
+        state=state,
+        code_challenge=challenge,
+        code_challenge_method="S256"
+    )
+
+    return {
+        "authorization_url": authorization_url
+    }
+    
+# ============================================================
+# GMAIL OAUTH CALLBACK
+# ============================================================
+
+@app.get("/api/gmail/callback")
+async def gmail_callback(
+    request: Request
+):
+    state = request.query_params.get("state")
+    code = request.query_params.get("code")
+    oauth_error = request.query_params.get("error")
+
+    if oauth_error:
+        return RedirectResponse(
+            f"{FRONTEND_URL}/?gmail=error"
+        )
+
+    if not state or not code:
+        return RedirectResponse(
+            f"{FRONTEND_URL}/?gmail=invalid"
+        )
+
+    state_hash = hashlib.sha256(
+        state.encode()
+    ).hexdigest()
+
+    # Consume the state once, inside a transaction.
+    with engine.begin() as connection:
+
+        result = connection.execute(
+            text("""
+                DELETE FROM public.gmail_oauth_states
+                WHERE state_hash = :state_hash
+                  AND expires_at > NOW()
+                RETURNING user_id, code_verifier
+            """),
+            {"state_hash": state_hash}
+        ).mappings().first()
+
+    if not result:
+        return RedirectResponse(
+            f"{FRONTEND_URL}/?gmail=expired"
+        )
+
+    flow = create_google_flow()
+
+    try:
+        # Exchange authorization code for Google tokens.
+        flow.fetch_token(
+            code=code,
+            code_verifier=result["code_verifier"]
+        )
+
+        credentials = flow.credentials
+
+        # Determine the authorized Gmail address.
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+                headers={
+                    "Authorization": f"Bearer {credentials.token}"
+                }
+            )
+
+        response.raise_for_status()
+
+        gmail_email = response.json()["emailAddress"]
+
+        refresh_token = credentials.refresh_token
+
+        # If Google doesn't return a new refresh token,
+        # retain the existing encrypted token.
+        encrypted_refresh_token = None
+
+        if refresh_token:
+            encrypted_refresh_token = (
+                get_gmail_cipher()
+                .encrypt(refresh_token.encode())
+                .decode()
+            )
+
+        with engine.begin() as connection:
+
+            connection.execute(
+                text("""
+                    INSERT INTO public.gmail_connections
+                        (
+                            user_id,
+                            gmail_email,
+                            encrypted_refresh_token
+                        )
+                    VALUES
+                        (
+                            :user_id,
+                            :gmail_email,
+                            :encrypted_refresh_token
+                        )
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET
+                        gmail_email = EXCLUDED.gmail_email,
+                        encrypted_refresh_token =
+                            CASE
+                                WHEN LOWER(gmail_connections.gmail_email)
+                                    = LOWER(EXCLUDED.gmail_email)
+                                THEN COALESCE(
+                                    EXCLUDED.encrypted_refresh_token,
+                                    gmail_connections.encrypted_refresh_token
+                                )
+                                ELSE EXCLUDED.encrypted_refresh_token
+                            END,
+                        updated_at = NOW()
+                """),
+                {
+                    "user_id": result["user_id"],
+                    "gmail_email": gmail_email,
+                    "encrypted_refresh_token": encrypted_refresh_token
+                }
+            )
+
+    except Exception:
+        return RedirectResponse(
+            f"{FRONTEND_URL}/?gmail=failed"
+        )
+
+    return RedirectResponse(
+        f"{FRONTEND_URL}/?gmail=connected"
+    )
+    
+# ============================================================
+# GMAIL CONNECTION STATUS
+# ============================================================
+
+@app.get("/api/gmail/status")
+async def gmail_status(
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+
+        result = connection.execute(
+            text("""
+                SELECT
+                    gmail_email,
+                    encrypted_refresh_token IS NOT NULL AS has_refresh_token
+                FROM public.gmail_connections
+                WHERE user_id = :user_id
+            """),
+            {
+                "user_id": UUID(user["id"])
+            }
+        ).mappings().first()
+
+    if not result:
+        return {
+            "connected": False,
+            "email": None
+        }
+
+    return {
+        "connected": bool(result["has_refresh_token"]),
+        "email": result["gmail_email"]
+        if result["has_refresh_token"]
+        else None
+    }
