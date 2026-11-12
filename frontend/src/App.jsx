@@ -39,31 +39,31 @@ function App() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
 
+  // ==========================================
+  // NEWSLETTERS
+  // ==========================================
+
+  const [newsletters, setNewsletters] = useState([]);
+  const [newsletterTitle, setNewsletterTitle] = useState("");
+
+  const [showNewsletterForm, setShowNewsletterForm] = useState(false);
+  const [creatingNewsletter, setCreatingNewsletter] = useState(false);
+  const [loadingNewsletters, setLoadingNewsletters] = useState(false);
+
+  const [selectedNewsletter, setSelectedNewsletter] = useState(null);
 
   // ==========================================
-// NEWSLETTERS
-// ==========================================
+  // ARTICLES
+  // ==========================================
 
-const [newsletters, setNewsletters] = useState([]);
-const [newsletterTitle, setNewsletterTitle] = useState("");
+  const [articles, setArticles] = useState([]);
+  const [articleHeading, setArticleHeading] = useState("");
+  const [articleContent, setArticleContent] = useState("");
 
-const [showNewsletterForm, setShowNewsletterForm] = useState(false);
-const [creatingNewsletter, setCreatingNewsletter] = useState(false);
-const [loadingNewsletters, setLoadingNewsletters] = useState(false);
+  const [showArticleForm, setShowArticleForm] = useState(false);
+  const [creatingArticle, setCreatingArticle] = useState(false);
+  const [loadingArticles, setLoadingArticles] = useState(false);
 
-const [selectedNewsletter, setSelectedNewsletter] = useState(null);
-
-// ==========================================
-// ARTICLES
-// ==========================================
-
-const [articles, setArticles] = useState([]);
-const [articleHeading, setArticleHeading] = useState("");
-const [articleContent, setArticleContent] = useState("");
-
-const [showArticleForm, setShowArticleForm] = useState(false);
-const [creatingArticle, setCreatingArticle] = useState(false);
-const [loadingArticles, setLoadingArticles] = useState(false);
   // ==========================================
   // INVITATIONS
   // ==========================================
@@ -77,32 +77,44 @@ const [loadingArticles, setLoadingArticles] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [acceptingInvitation, setAcceptingInvitation] = useState(false);
 
-  // Read invitation token from URL.
   const [inviteToken, setInviteToken] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("invite") || "";
   });
-// ==========================================
-// GMAIL INTEGRATION
-// ==========================================
 
-const [gmailStatus, setGmailStatus] = useState({
-  connected: false,
-  email: null,
-});
+  // ==========================================
+  // GMAIL INTEGRATION
+  // ==========================================
 
-const [gmailLoading, setGmailLoading] = useState(false);
-const [gmailConnecting, setGmailConnecting] = useState(false);
-const [gmailMessage, setGmailMessage] = useState("");
+  const [gmailStatus, setGmailStatus] = useState({
+    connected: false,
+    email: null,
+  });
 
-// ==========================================
-// GMAIL INBOX
-// ==========================================
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [gmailMessage, setGmailMessage] = useState("");
 
-const [gmailMessages, setGmailMessages] = useState([]);
-const [showGmailInbox, setShowGmailInbox] = useState(false);
-const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
-const [selectedEmails, setSelectedEmails] = useState([]);
+  // ==========================================
+  // GMAIL INBOX
+  // ==========================================
+
+  const [gmailMessages, setGmailMessages] = useState([]);
+  const [showGmailInbox, setShowGmailInbox] = useState(false);
+  const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState([]);
+
+  // ==========================================
+  // FULL EMAIL PREVIEW
+  // ==========================================
+
+  const [previewEmail, setPreviewEmail] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+
+  const showEmailPreview =
+    previewEmail !== null || loadingPreview || Boolean(previewError);
+
   // ==========================================
   // INITIAL AUTHENTICATION
   // ==========================================
@@ -141,6 +153,12 @@ const [selectedEmails, setSelectedEmails] = useState([]);
         setSelectedWorkspace(null);
         setMembers([]);
         setWorkspaces([]);
+        setGmailMessages([]);
+        setSelectedEmails([]);
+        setShowGmailInbox(false);
+        setPreviewEmail(null);
+        setPreviewError("");
+        setLoadingPreview(false);
       }
     });
 
@@ -202,7 +220,6 @@ const [selectedEmails, setSelectedEmails] = useState([]);
           email,
           password,
           options: {
-            // Preserve invitation token during email verification.
             emailRedirectTo: window.location.href,
           },
         });
@@ -270,172 +287,163 @@ const [selectedEmails, setSelectedEmails] = useState([]);
     }
   }
 
-// ==========================================
-// LOAD WORKSPACES
-// ==========================================
+  // ==========================================
+  // CHECK GMAIL CONNECTION
+  // ==========================================
 
-async function loadWorkspaces() {
-  setFetchingWorkspaces(true);
+  async function checkGmailStatus() {
+    setGmailLoading(true);
 
-  try {
-    const data = await authenticatedFetch("/api/workspaces");
-    setWorkspaces(data);
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setFetchingWorkspaces(false);
+    try {
+      const data = await authenticatedFetch("/api/gmail/status");
+      setGmailStatus(data);
+    } catch (error) {
+      setGmailMessage(error.message);
+    } finally {
+      setGmailLoading(false);
+    }
   }
-}
 
+  // ==========================================
+  // LOAD WORKSPACES AND GMAIL STATUS
+  // ==========================================
 
-// ==========================================
-// LOAD WORKSPACES AND GMAIL STATUS
-// ==========================================
+  useEffect(() => {
+    if (session?.user?.id) {
+      loadWorkspaces();
+      checkGmailStatus();
+    } else {
+      setWorkspaces([]);
+      setGmailStatus({
+        connected: false,
+        email: null,
+      });
+    }
+  }, [session?.user?.id]);
 
-useEffect(() => {
-  if (session?.user?.id) {
-    loadWorkspaces();
-    checkGmailStatus();
-  } else {
-    setWorkspaces([]);
-    setGmailStatus({
-      connected: false,
-      email: null,
-    });
-  }
-}, [session?.user?.id]);
+  // ==========================================
+  // HANDLE GMAIL OAUTH CALLBACK
+  // ==========================================
 
+  useEffect(() => {
+    if (!session?.user?.id) return;
 
-// ==========================================
-// HANDLE GMAIL OAUTH CALLBACK
-// ==========================================
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("gmail");
 
-useEffect(() => {
-  if (!session?.user?.id) return;
+    if (!result) return;
 
-  const params = new URLSearchParams(window.location.search);
-  const result = params.get("gmail");
+    if (result === "connected") {
+      setGmailMessage("Gmail connected successfully!");
+      checkGmailStatus();
+    } else {
+      setGmailMessage(
+        "Gmail connection was not completed. Please try again."
+      );
+    }
 
-  if (!result) return;
+    params.delete("gmail");
 
-  if (result === "connected") {
-    setGmailMessage("Gmail connected successfully!");
-    checkGmailStatus();
-  } else {
-    setGmailMessage(
-      "Gmail connection was not completed. Please try again."
+    const remainingQuery = params.toString();
+
+    window.history.replaceState(
+      {},
+      "",
+      window.location.pathname +
+        (remainingQuery ? `?${remainingQuery}` : "")
     );
+  }, [session?.user?.id]);
+
+  // ==========================================
+  // CREATE WORKSPACE
+  // ==========================================
+
+  async function createWorkspace(event) {
+    event.preventDefault();
+
+    const name = workspaceName.trim();
+
+    if (name.length < 3) {
+      setMessage("Workspace name must have at least 3 characters.");
+      return;
+    }
+
+    setWorkspaceLoading(true);
+    setMessage("");
+
+    try {
+      await authenticatedFetch("/api/workspaces", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+
+      setWorkspaceName("");
+      await loadWorkspaces();
+
+      setMessage("Workspace created successfully!");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setWorkspaceLoading(false);
+    }
   }
-
-  params.delete("gmail");
-
-  const remainingQuery = params.toString();
-
-  window.history.replaceState(
-    {},
-    "",
-    window.location.pathname +
-      (remainingQuery ? `?${remainingQuery}` : "")
-  );
-}, [session?.user?.id]);
-
-
-// ==========================================
-// CREATE WORKSPACE
-// ==========================================
-
-async function createWorkspace(event) {
-  event.preventDefault();
-
-  const name = workspaceName.trim();
-
-  if (name.length < 3) {
-    setMessage("Workspace name must have at least 3 characters.");
-    return;
-  }
-
-  setWorkspaceLoading(true);
-  setMessage("");
-
-  try {
-    await authenticatedFetch("/api/workspaces", {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
-
-    setWorkspaceName("");
-    await loadWorkspaces();
-
-    setMessage("Workspace created successfully!");
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setWorkspaceLoading(false);
-  }
-}
 
   // ==========================================
   // OPEN WORKSPACE
   // ==========================================
 
   async function openWorkspace(workspaceId) {
-  setLoadingWorkspace(true);
-  setMessage("");
-  setMembers([]);
-  setNewsletters([]);
+    setLoadingWorkspace(true);
+    setMessage("");
+    setMembers([]);
+    setNewsletters([]);
 
-  try {
-    const [workspaceData, membersData, newslettersData] =
-      await Promise.all([
-        authenticatedFetch(`/api/workspaces/${workspaceId}`),
+    try {
+      const [workspaceData, membersData, newslettersData] =
+        await Promise.all([
+          authenticatedFetch(`/api/workspaces/${workspaceId}`),
+          authenticatedFetch(`/api/workspaces/${workspaceId}/members`),
+          authenticatedFetch(`/api/workspaces/${workspaceId}/newsletters`),
+        ]);
 
-        authenticatedFetch(
-          `/api/workspaces/${workspaceId}/members`
-        ),
+      setSelectedWorkspace(workspaceData);
+      setMembers(membersData);
+      setNewsletters(newslettersData);
 
-        authenticatedFetch(
-          `/api/workspaces/${workspaceId}/newsletters`
-        ),
-      ]);
+      setSelectedNewsletter(null);
+      setActiveTab("overview");
 
-    setSelectedWorkspace(workspaceData);
-    setMembers(membersData);
-    setNewsletters(newslettersData);
-
-    setSelectedNewsletter(null);
-    setActiveTab("overview");
-
-    setShowInviteForm(false);
-    setInvitationLink("");
-    setShowNewsletterForm(false);
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setLoadingWorkspace(false);
+      setShowInviteForm(false);
+      setInvitationLink("");
+      setShowNewsletterForm(false);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoadingWorkspace(false);
+    }
   }
-}
 
   // ==========================================
   // BACK TO WORKSPACES
   // ==========================================
 
-function backToWorkspaces() {
-  setSelectedWorkspace(null);
-  setSelectedNewsletter(null);
+  function backToWorkspaces() {
+    setSelectedWorkspace(null);
+    setSelectedNewsletter(null);
 
-  setMembers([]);
-  setNewsletters([]);
+    setMembers([]);
+    setNewsletters([]);
 
-  setActiveTab("overview");
+    setActiveTab("overview");
 
-  setShowInviteForm(false);
-  setInvitationLink("");
+    setShowInviteForm(false);
+    setInvitationLink("");
 
-  setShowNewsletterForm(false);
-  setNewsletterTitle("");
+    setShowNewsletterForm(false);
+    setNewsletterTitle("");
 
-  setMessage("");
-}
+    setMessage("");
+  }
 
   // ==========================================
   // MEMBER DISPLAY NAME
@@ -449,155 +457,148 @@ function backToWorkspaces() {
     return `Member ${member.user_id.substring(0, 8)}...`;
   }
 
-// ==========================================
-// LOAD NEWSLETTERS
-// ==========================================
+  // ==========================================
+  // LOAD NEWSLETTERS
+  // ==========================================
 
-async function loadNewsletters(workspaceId) {
-  setLoadingNewsletters(true);
+  async function loadNewsletters(workspaceId) {
+    setLoadingNewsletters(true);
 
-  try {
-    const data = await authenticatedFetch(
-      `/api/workspaces/${workspaceId}/newsletters`
-    );
+    try {
+      const data = await authenticatedFetch(
+        `/api/workspaces/${workspaceId}/newsletters`
+      );
 
-    setNewsletters(data);
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setLoadingNewsletters(false);
-  }
-}
-
-
-// ==========================================
-// CREATE NEWSLETTER
-// ==========================================
-
-async function createNewsletter(event) {
-  event.preventDefault();
-
-  if (!selectedWorkspace) return;
-
-  const title = newsletterTitle.trim();
-
-  if (title.length < 3) {
-    setMessage("Newsletter title must contain at least 3 characters.");
-    return;
+      setNewsletters(data);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoadingNewsletters(false);
+    }
   }
 
-  setCreatingNewsletter(true);
-  setMessage("");
+  // ==========================================
+  // CREATE NEWSLETTER
+  // ==========================================
 
-  try {
-    await authenticatedFetch(
-      `/api/workspaces/${selectedWorkspace.id}/newsletters`,
-      {
-        method: "POST",
-        body: JSON.stringify({ title }),
-      }
-    );
+  async function createNewsletter(event) {
+    event.preventDefault();
 
-    setNewsletterTitle("");
-    setShowNewsletterForm(false);
+    if (!selectedWorkspace) return;
 
-    await loadNewsletters(selectedWorkspace.id);
+    const title = newsletterTitle.trim();
 
-    setMessage("Newsletter created successfully!");
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setCreatingNewsletter(false);
-  }
-}
+    if (title.length < 3) {
+      setMessage("Newsletter title must contain at least 3 characters.");
+      return;
+    }
 
+    setCreatingNewsletter(true);
+    setMessage("");
 
-// ==========================================
-// OPEN NEWSLETTER
-// ==========================================
+    try {
+      await authenticatedFetch(
+        `/api/workspaces/${selectedWorkspace.id}/newsletters`,
+        {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }
+      );
 
-// ==========================================
-// LOAD ARTICLES
-// ==========================================
+      setNewsletterTitle("");
+      setShowNewsletterForm(false);
 
-async function loadArticles(newsletterId) {
-  setLoadingArticles(true);
+      await loadNewsletters(selectedWorkspace.id);
 
-  try {
-    const data = await authenticatedFetch(
-      `/api/newsletters/${newsletterId}/articles`
-    );
-
-    setArticles(data);
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setLoadingArticles(false);
-  }
-}
-
-
-// ==========================================
-// OPEN NEWSLETTER
-// ==========================================
-
-async function openNewsletter(newsletter) {
-  setSelectedNewsletter(newsletter);
-  setArticles([]);
-  setShowArticleForm(false);
-  setMessage("");
-
-  await loadArticles(newsletter.id);
-}
-
-
-// ==========================================
-// CREATE ARTICLE
-// ==========================================
-
-async function createArticle(event) {
-  event.preventDefault();
-
-  if (!selectedNewsletter) return;
-
-  const heading = articleHeading.trim();
-  const content = articleContent.trim();
-
-  if (heading.length < 3 || content.length < 10) {
-    setMessage(
-      "Article heading must have at least 3 characters and content at least 10."
-    );
-    return;
+      setMessage("Newsletter created successfully!");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setCreatingNewsletter(false);
+    }
   }
 
-  setCreatingArticle(true);
-  setMessage("");
+  // ==========================================
+  // LOAD ARTICLES
+  // ==========================================
 
-  try {
-    await authenticatedFetch(
-      `/api/newsletters/${selectedNewsletter.id}/articles`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          heading,
-          content,
-        }),
-      }
-    );
+  async function loadArticles(newsletterId) {
+    setLoadingArticles(true);
 
-    setArticleHeading("");
-    setArticleContent("");
+    try {
+      const data = await authenticatedFetch(
+        `/api/newsletters/${newsletterId}/articles`
+      );
+
+      setArticles(data);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoadingArticles(false);
+    }
+  }
+
+  // ==========================================
+  // OPEN NEWSLETTER
+  // ==========================================
+
+  async function openNewsletter(newsletter) {
+    setSelectedNewsletter(newsletter);
+    setArticles([]);
     setShowArticleForm(false);
+    setMessage("");
 
-    await loadArticles(selectedNewsletter.id);
-
-    setMessage("Article created successfully!");
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setCreatingArticle(false);
+    await loadArticles(newsletter.id);
   }
-}
+
+  // ==========================================
+  // CREATE ARTICLE
+  // ==========================================
+
+  async function createArticle(event) {
+    event.preventDefault();
+
+    if (!selectedNewsletter) return;
+
+    const heading = articleHeading.trim();
+    const content = articleContent.trim();
+
+    if (heading.length < 3 || content.length < 10) {
+      setMessage(
+        "Article heading must have at least 3 characters and content at least 10."
+      );
+      return;
+    }
+
+    setCreatingArticle(true);
+    setMessage("");
+
+    try {
+      await authenticatedFetch(
+        `/api/newsletters/${selectedNewsletter.id}/articles`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            heading,
+            content,
+          }),
+        }
+      );
+
+      setArticleHeading("");
+      setArticleContent("");
+      setShowArticleForm(false);
+
+      await loadArticles(selectedNewsletter.id);
+
+      setMessage("Article created successfully!");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setCreatingArticle(false);
+    }
+  }
+
   // ==========================================
   // GENERATE INVITATION
   // ==========================================
@@ -672,98 +673,116 @@ async function createArticle(event) {
         }
       );
 
-      // Remove token from URL after successful acceptance.
       const url = new URL(window.location.href);
       url.searchParams.delete("invite");
 
       window.history.replaceState({}, "", url.toString());
 
       setInviteToken("");
-      setMessage(data.message);
 
-      // Refresh workspace list.
       await loadWorkspaces();
-
-      // Open the workspace the user just joined.
       await openWorkspace(data.workspace_id);
+
+      setMessage(data.message);
     } catch (error) {
       setMessage(error.message);
     } finally {
       setAcceptingInvitation(false);
     }
   }
-// ==========================================
-// CHECK GMAIL CONNECTION
-// ==========================================
 
-async function checkGmailStatus() {
-  setGmailLoading(true);
+  // ==========================================
+  // CONNECT GMAIL
+  // ==========================================
 
-  try {
-    const data = await authenticatedFetch("/api/gmail/status");
+  async function connectGmail() {
+    setGmailConnecting(true);
+    setGmailMessage("");
 
-    setGmailStatus(data);
-  } catch (error) {
-    setGmailMessage(error.message);
-  } finally {
-    setGmailLoading(false);
-  }
-}
+    try {
+      const data = await authenticatedFetch("/api/gmail/connect");
 
+      if (!data.authorization_url) {
+        throw new Error("Google authorization URL was not returned.");
+      }
 
-// ==========================================
-// CONNECT GMAIL
-// ==========================================
-
-async function connectGmail() {
-  setGmailConnecting(true);
-  setGmailMessage("");
-
-  try {
-    const data = await authenticatedFetch("/api/gmail/connect");
-
-    if (!data.authorization_url) {
-      throw new Error("Google authorization URL was not returned.");
+      window.location.assign(data.authorization_url);
+    } catch (error) {
+      setGmailMessage(error.message);
+      setGmailConnecting(false);
     }
-
-    window.location.assign(data.authorization_url);
-  } catch (error) {
-    setGmailMessage(error.message);
-    setGmailConnecting(false);
   }
-}
 
-// ==========================================
-// FETCH GMAIL MESSAGES
-// ==========================================
+  // ==========================================
+  // FETCH GMAIL MESSAGES
+  // ==========================================
 
-async function loadGmailMessages() {
-  setLoadingGmailMessages(true);
-  setGmailMessage("");
+  async function loadGmailMessages() {
+    setLoadingGmailMessages(true);
+    setGmailMessage("");
 
-  try {
-    const data = await authenticatedFetch("/api/gmail/messages");
+    try {
+      const data = await authenticatedFetch("/api/gmail/messages");
 
-    setGmailMessages(data.messages || []);
-    setShowGmailInbox(true);
-  } catch (error) {
-    setGmailMessage(error.message);
-  } finally {
-    setLoadingGmailMessages(false);
+      setGmailMessages(data.messages || []);
+      setShowGmailInbox(true);
+    } catch (error) {
+      setGmailMessage(error.message);
+    } finally {
+      setLoadingGmailMessages(false);
+    }
   }
-}
 
-// ==========================================
-// SELECT / DESELECT EMAILS
-// ==========================================
+  // ==========================================
+  // VIEW FULL GMAIL MESSAGE
+  // ==========================================
 
-function toggleEmailSelection(emailId) {
-  setSelectedEmails((previous) =>
-    previous.includes(emailId)
-      ? previous.filter((id) => id !== emailId)
-      : [...previous, emailId]
-  );
-}
+  async function viewFullEmail(messageId) {
+    console.log("View Full Email clicked:", messageId);
+
+    // Open the popup immediately.
+    setPreviewEmail(null);
+    setPreviewError("");
+    setLoadingPreview(true);
+
+    try {
+      const data = await authenticatedFetch(
+        `/api/gmail/messages/${encodeURIComponent(messageId)}`
+      );
+
+      console.log("Full email received:", data);
+
+      setPreviewEmail(data);
+    } catch (error) {
+      console.error("Email preview error:", error);
+      setPreviewError(error.message);
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  // ==========================================
+  // CLOSE EMAIL PREVIEW
+  // ==========================================
+
+  function closeEmailPreview() {
+    setPreviewEmail(null);
+    setPreviewError("");
+    setLoadingPreview(false);
+  }
+
+  // ==========================================
+  // SELECT / DESELECT EMAILS
+  // ==========================================
+
+  function toggleEmailSelection(emailId) {
+    setSelectedEmails((previous) =>
+      previous.includes(emailId)
+        ? previous.filter((id) => id !== emailId)
+        : [...previous, emailId]
+    );
+  }
+
   // ==========================================
   // LOADING SCREEN
   // ==========================================
@@ -858,17 +877,12 @@ function toggleEmailSelection(emailId) {
       <div className="container auth-container">
         <h1>NewsCraft AI</h1>
 
-        <p className="subtitle">
-          Workspace Invitation
-        </p>
+        <p className="subtitle">Workspace Invitation</p>
 
         <div className="status-card">
           <h2>You've Been Invited!</h2>
 
-          <p>
-            You're logged in as:
-          </p>
-
+          <p>You're logged in as:</p>
           <p>
             <strong>{session.user.email}</strong>
           </p>
@@ -968,13 +982,10 @@ function toggleEmailSelection(emailId) {
 
             <div className="dashboard-card">
               <h3>Newsletters</h3>
-
-              <p className="stat-number">
-                {newsletters.length}
-              </p>
-
+              <p className="stat-number">{newsletters.length}</p>
               <p>Total newsletters in this workspace</p>
             </div>
+
             <div className="dashboard-card">
               <h3>Your Role</h3>
               <p className="stat-number role-text">
@@ -1000,9 +1011,7 @@ function toggleEmailSelection(emailId) {
                     setMessage("");
                   }}
                 >
-                  {showInviteForm
-                    ? "Cancel"
-                    : "+ Invite Member"}
+                  {showInviteForm ? "Cancel" : "+ Invite Member"}
                 </button>
               )}
             </div>
@@ -1105,297 +1114,254 @@ function toggleEmailSelection(emailId) {
           </div>
         )}
 
-{/* ==========================================
-    NEWSLETTERS
-========================================== */}
+        {/* NEWSLETTERS */}
 
-{activeTab === "newsletters" && (
-  <div className="dashboard-card">
+        {activeTab === "newsletters" && (
+          <div className="dashboard-card">
+            {selectedNewsletter ? (
+              <div className="newsletter-details">
+                <button
+                  className="back-btn"
+                  onClick={() => setSelectedNewsletter(null)}
+                >
+                  ← Back to Newsletters
+                </button>
 
-    {selectedNewsletter ? (
+                <h2>{selectedNewsletter.title}</h2>
 
-      // ======================================
-      // SELECTED NEWSLETTER
-      // ======================================
-
-      <div className="newsletter-details">
-
-        <button
-          className="back-btn"
-          onClick={() => setSelectedNewsletter(null)}
-        >
-          ← Back to Newsletters
-        </button>
-
-        <h2>{selectedNewsletter.title}</h2>
-
-        <div className="newsletter-info">
-
-          <p>
-            <strong>Status:</strong>{" "}
-            <span className="newsletter-status">
-              {selectedNewsletter.status}
-            </span>
-          </p>
-
-          <p>
-            <strong>Created:</strong>{" "}
-            {selectedNewsletter.created_at
-              ? new Date(
-                  selectedNewsletter.created_at
-                ).toLocaleDateString()
-              : "Unknown"}
-          </p>
-
-        </div>
-
-<div className="articles-section">
-
-  <div className="section-header">
-    <h3>Newsletter Articles</h3>
-
-    {["admin", "editor"].includes(selectedWorkspace.role) && (
-      <button
-        onClick={() => {
-          setShowArticleForm(!showArticleForm);
-          setMessage("");
-        }}
-      >
-        {showArticleForm ? "Cancel" : "+ Add Article"}
-      </button>
-    )}
-  </div>
-
-  {/* ADD ARTICLE FORM */}
-
-  {showArticleForm && (
-    <div className="article-form">
-      <h3>Add New Article</h3>
-
-      <form onSubmit={createArticle}>
-        <label>Article Heading</label>
-
-        <input
-          type="text"
-          placeholder="e.g. Students Win National Hackathon"
-          value={articleHeading}
-          onChange={(event) =>
-            setArticleHeading(event.target.value)
-          }
-          minLength={3}
-          maxLength={200}
-          required
-        />
-
-        <label>Article Content</label>
-
-        <textarea
-          placeholder="Write the article paragraph here..."
-          value={articleContent}
-          onChange={(event) =>
-            setArticleContent(event.target.value)
-          }
-          rows={7}
-          minLength={10}
-          required
-        />
-
-        <button type="submit" disabled={creatingArticle}>
-          {creatingArticle ? "Saving..." : "Save Article"}
-        </button>
-      </form>
-    </div>
-  )}
-
-  {/* ARTICLE LIST */}
-
-  {loadingArticles ? (
-    <p>Loading articles...</p>
-  ) : articles.length === 0 ? (
-    <div className="newsletter-empty">
-      <h3>No Articles Yet</h3>
-      <p>Add your first article to this newsletter.</p>
-    </div>
-  ) : (
-    <div className="article-list">
-      {articles.map((article) => (
-        <div key={article.id} className="article-item">
-          <div className="article-item-header">
-            <h3>{article.heading}</h3>
-
-            <span className="newsletter-status">
-              {article.status}
-            </span>
-          </div>
-
-          <p className="article-content">
-            {article.content}
-          </p>
-
-          <p className="article-date">
-            Created:{" "}
-            {article.created_at
-              ? new Date(article.created_at).toLocaleDateString()
-              : "Unknown"}
-          </p>
-        </div>
-      ))}
-    </div>
-  )}
-
-  {message && <p className="message">{message}</p>}
-</div>
-
-      </div>
-
-    ) : (
-
-      // ======================================
-      // NEWSLETTER LIST
-      // ======================================
-
-      <>
-
-        <div className="section-header">
-
-          <h3>Newsletters</h3>
-
-          {["admin", "editor"].includes(
-            selectedWorkspace.role
-          ) && (
-
-            <button
-              onClick={() => {
-                setShowNewsletterForm(
-                  !showNewsletterForm
-                );
-
-                setMessage("");
-              }}
-            >
-              {showNewsletterForm
-                ? "Cancel"
-                : "+ Create Newsletter"}
-            </button>
-
-          )}
-
-        </div>
-
-        {/* CREATE NEWSLETTER FORM */}
-
-        {showNewsletterForm && (
-          <div className="newsletter-form">
-
-            <h3>Create New Newsletter</h3>
-
-            <p>
-              Create a newsletter for your department.
-              You can add articles and photographs later.
-            </p>
-
-            <form onSubmit={createNewsletter}>
-
-              <input
-                type="text"
-                placeholder="e.g. ECE Department Newsletter — November 2026"
-                value={newsletterTitle}
-                onChange={(event) =>
-                  setNewsletterTitle(event.target.value)
-                }
-                minLength={3}
-                maxLength={200}
-                required
-              />
-
-              <button
-                type="submit"
-                disabled={creatingNewsletter}
-              >
-                {creatingNewsletter
-                  ? "Creating..."
-                  : "Create Newsletter"}
-              </button>
-
-            </form>
-
-          </div>
-        )}
-
-        {/* NEWSLETTER LIST */}
-
-        {loadingNewsletters ? (
-
-          <p>Loading newsletters...</p>
-
-        ) : newsletters.length === 0 ? (
-
-          <div className="newsletter-empty">
-
-            <h3>No Newsletters Yet</h3>
-
-            <p>
-              Create your first newsletter to get started.
-            </p>
-
-          </div>
-
-        ) : (
-
-          <div className="newsletter-list">
-
-            {newsletters.map((newsletter) => (
-
-              <div
-                key={newsletter.id}
-                className="newsletter-item"
-              >
-
-                <div>
-
-                  <h3>{newsletter.title}</h3>
+                <div className="newsletter-info">
+                  <p>
+                    <strong>Status:</strong>{" "}
+                    <span className="newsletter-status">
+                      {selectedNewsletter.status}
+                    </span>
+                  </p>
 
                   <p>
-                    Created:{" "}
-                    {newsletter.created_at
+                    <strong>Created:</strong>{" "}
+                    {selectedNewsletter.created_at
                       ? new Date(
-                          newsletter.created_at
+                          selectedNewsletter.created_at
                         ).toLocaleDateString()
                       : "Unknown"}
                   </p>
-
-                  <span className="newsletter-status">
-                    {newsletter.status}
-                  </span>
-
                 </div>
 
-                <button
-                  onClick={() =>
-                    openNewsletter(newsletter)
-                  }
-                >
-                  Open Newsletter →
-                </button>
+                {/* ARTICLES */}
 
+                <div className="articles-section">
+                  <div className="section-header">
+                    <h3>Newsletter Articles</h3>
+
+                    {["admin", "editor"].includes(
+                      selectedWorkspace.role
+                    ) && (
+                      <button
+                        onClick={() => {
+                          setShowArticleForm(!showArticleForm);
+                          setMessage("");
+                        }}
+                      >
+                        {showArticleForm ? "Cancel" : "+ Add Article"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ADD ARTICLE FORM */}
+
+                  {showArticleForm && (
+                    <div className="article-form">
+                      <h3>Add New Article</h3>
+
+                      <form onSubmit={createArticle}>
+                        <label>Article Heading</label>
+
+                        <input
+                          type="text"
+                          placeholder="e.g. Students Win National Hackathon"
+                          value={articleHeading}
+                          onChange={(event) =>
+                            setArticleHeading(event.target.value)
+                          }
+                          minLength={3}
+                          maxLength={200}
+                          required
+                        />
+
+                        <label>Article Content</label>
+
+                        <textarea
+                          placeholder="Write the article paragraph here..."
+                          value={articleContent}
+                          onChange={(event) =>
+                            setArticleContent(event.target.value)
+                          }
+                          rows={7}
+                          minLength={10}
+                          required
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={creatingArticle}
+                        >
+                          {creatingArticle ? "Saving..." : "Save Article"}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* ARTICLE LIST */}
+
+                  {loadingArticles ? (
+                    <p>Loading articles...</p>
+                  ) : articles.length === 0 ? (
+                    <div className="newsletter-empty">
+                      <h3>No Articles Yet</h3>
+                      <p>Add your first article to this newsletter.</p>
+                    </div>
+                  ) : (
+                    <div className="article-list">
+                      {articles.map((article) => (
+                        <div
+                          key={article.id}
+                          className="article-item"
+                        >
+                          <div className="article-item-header">
+                            <h3>{article.heading}</h3>
+
+                            <span className="newsletter-status">
+                              {article.status}
+                            </span>
+                          </div>
+
+                          <p className="article-content">
+                            {article.content}
+                          </p>
+
+                          <p className="article-date">
+                            Created:{" "}
+                            {article.created_at
+                              ? new Date(
+                                  article.created_at
+                                ).toLocaleDateString()
+                              : "Unknown"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {message && <p className="message">{message}</p>}
+                </div>
               </div>
+            ) : (
+              <>
+                <div className="section-header">
+                  <h3>Newsletters</h3>
 
-            ))}
+                  {["admin", "editor"].includes(
+                    selectedWorkspace.role
+                  ) && (
+                    <button
+                      onClick={() => {
+                        setShowNewsletterForm(!showNewsletterForm);
+                        setMessage("");
+                      }}
+                    >
+                      {showNewsletterForm
+                        ? "Cancel"
+                        : "+ Create Newsletter"}
+                    </button>
+                  )}
+                </div>
 
+                {/* CREATE NEWSLETTER FORM */}
+
+                {showNewsletterForm && (
+                  <div className="newsletter-form">
+                    <h3>Create New Newsletter</h3>
+
+                    <p>
+                      Create a newsletter for your department.
+                      You can add articles and photographs later.
+                    </p>
+
+                    <form onSubmit={createNewsletter}>
+                      <input
+                        type="text"
+                        placeholder="e.g. ECE Department Newsletter — November 2026"
+                        value={newsletterTitle}
+                        onChange={(event) =>
+                          setNewsletterTitle(event.target.value)
+                        }
+                        minLength={3}
+                        maxLength={200}
+                        required
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={creatingNewsletter}
+                      >
+                        {creatingNewsletter
+                          ? "Creating..."
+                          : "Create Newsletter"}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* NEWSLETTER LIST */}
+
+                {loadingNewsletters ? (
+                  <p>Loading newsletters...</p>
+                ) : newsletters.length === 0 ? (
+                  <div className="newsletter-empty">
+                    <h3>No Newsletters Yet</h3>
+                    <p>
+                      Create your first newsletter to get started.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="newsletter-list">
+                    {newsletters.map((newsletter) => (
+                      <div
+                        key={newsletter.id}
+                        className="newsletter-item"
+                      >
+                        <div>
+                          <h3>{newsletter.title}</h3>
+
+                          <p>
+                            Created:{" "}
+                            {newsletter.created_at
+                              ? new Date(
+                                  newsletter.created_at
+                                ).toLocaleDateString()
+                              : "Unknown"}
+                          </p>
+
+                          <span className="newsletter-status">
+                            {newsletter.status}
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => openNewsletter(newsletter)}
+                        >
+                          Open Newsletter →
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {message && <p className="message">{message}</p>}
+              </>
+            )}
           </div>
-
         )}
-
-        {message && (
-          <p className="message">{message}</p>
-        )}
-
-      </>
-
-    )}
-
-  </div>
-)}
       </div>
     );
   }
@@ -1427,146 +1393,227 @@ function toggleEmailSelection(emailId) {
           Logged in as: <strong>{session.user.email}</strong>
         </p>
       </div>
+
       {/* ==========================================
-    GMAIL INTEGRATION
-========================================== */}
+          GMAIL INTEGRATION
+      ========================================== */}
 
-<div className="dashboard-card gmail-card">
-  <div className="section-header">
-    <h2>Gmail Integration</h2>
+      <div className="dashboard-card gmail-card">
+        <div className="section-header">
+          <h2>Gmail Integration</h2>
 
-    <span
-      className={
-        gmailStatus.connected
-          ? "gmail-badge connected"
-          : "gmail-badge disconnected"
-      }
-    >
-      {gmailStatus.connected ? "Connected" : "Not Connected"}
-    </span>
-  </div>
+          <span
+            className={
+              gmailStatus.connected
+                ? "gmail-badge connected"
+                : "gmail-badge disconnected"
+            }
+          >
+            {gmailStatus.connected ? "Connected" : "Not Connected"}
+          </span>
+        </div>
 
-  {gmailLoading ? (
-    <p>Checking Gmail connection...</p>
-  ) : gmailStatus.connected ? (
-    <>
-      <p>Your Gmail account is connected to NewsCraft AI.</p>
+        {gmailLoading ? (
+          <p>Checking Gmail connection...</p>
+        ) : gmailStatus.connected ? (
+          <>
+            <p>Your Gmail account is connected to NewsCraft AI.</p>
 
-      <p>
-        <strong>Connected account:</strong>{" "}
-        {gmailStatus.email}
-      </p>
+            <p>
+              <strong>Connected account:</strong>{" "}
+              {gmailStatus.email}
+            </p>
 
-      <p>
-  Browse emails from your connected Gmail account.
-</p>
+            <p>Browse emails from your connected Gmail account.</p>
 
-<button
-  onClick={() => {
-    if (showGmailInbox) {
-      setShowGmailInbox(false);
-    } else {
-      loadGmailMessages();
-    }
-  }}
-  disabled={loadingGmailMessages}
->
-  {loadingGmailMessages
-    ? "Loading Emails..."
-    : showGmailInbox
-    ? "Hide Gmail Inbox"
-    : "View Gmail Inbox"}
-</button>
-    </>
-  ) : (
-    <>
-      <p>
-        Connect your Gmail account to import department
-        achievements, faculty updates, and event emails
-        directly into your newsletters.
-      </p>
+            <button
+              onClick={() => {
+                if (showGmailInbox) {
+                  setShowGmailInbox(false);
+                } else {
+                  loadGmailMessages();
+                }
+              }}
+              disabled={loadingGmailMessages}
+            >
+              {loadingGmailMessages
+                ? "Loading Emails..."
+                : showGmailInbox
+                ? "Hide Gmail Inbox"
+                : "View Gmail Inbox"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p>
+              Connect your Gmail account to import department
+              achievements, faculty updates, and event emails
+              directly into your newsletters.
+            </p>
 
-      <button
-        onClick={connectGmail}
-        disabled={gmailConnecting}
-      >
-        {gmailConnecting ? "Connecting..." : "Connect Gmail"}
-      </button>
-    </>
-  )}
+            <button
+              onClick={connectGmail}
+              disabled={gmailConnecting}
+            >
+              {gmailConnecting ? "Connecting..." : "Connect Gmail"}
+            </button>
+          </>
+        )}
 
-  {gmailMessage && (
-    <p className="message">{gmailMessage}</p>
-  )}
-</div>
+        {gmailMessage && (
+          <p className="message">{gmailMessage}</p>
+        )}
+      </div>
 
-{/* ==========================================
-    GMAIL INBOX
-========================================== */}
+      {/* ==========================================
+          GMAIL INBOX
+      ========================================== */}
 
-{gmailStatus.connected && showGmailInbox && (
-  <div className="dashboard-card gmail-inbox">
-    <div className="section-header">
-      <h2>Gmail Inbox</h2>
+      {gmailStatus.connected && showGmailInbox && (
+        <div className="dashboard-card gmail-inbox">
+          <div className="section-header">
+            <h2>Gmail Inbox</h2>
 
-      <button
-        onClick={loadGmailMessages}
-        disabled={loadingGmailMessages}
-      >
-        {loadingGmailMessages ? "Refreshing..." : "Refresh"}
-      </button>
-    </div>
+            <button
+              onClick={loadGmailMessages}
+              disabled={loadingGmailMessages}
+            >
+              {loadingGmailMessages ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
 
-    <p>
-      Select the emails you want to include in your newsletter.
-    </p>
+          <p>Select the emails you want to include in your newsletter.</p>
 
-    {gmailMessages.length === 0 ? (
-      <p>No emails found.</p>
-    ) : (
-      <div className="gmail-message-list">
-        {gmailMessages.map((email) => (
-          <label key={email.id} className="gmail-message">
-            <input
-              type="checkbox"
-              checked={selectedEmails.includes(email.id)}
-              onChange={() => toggleEmailSelection(email.id)}
-            />
+          {gmailMessages.length === 0 ? (
+            <p>No emails found.</p>
+          ) : (
+            <div className="gmail-message-list">
+              {gmailMessages.map((email) => (
+                <div key={email.id} className="gmail-message">
+                  <label className="gmail-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedEmails.includes(email.id)}
+                      onChange={() => toggleEmailSelection(email.id)}
+                      aria-label={`Select email: ${email.subject}`}
+                    />
+                  </label>
 
-            <div className="gmail-message-content">
-              <h3>{email.subject}</h3>
+                  <div className="gmail-message-content">
+                    <h3>{email.subject}</h3>
 
-              <p>
-                <strong>From:</strong> {email.from}
-              </p>
+                    <p>
+                      <strong>From:</strong> {email.from}
+                    </p>
 
-              <p>
-                <strong>Date:</strong> {email.date}
-              </p>
+                    <p>
+                      <strong>Date:</strong>{" "}
+                      {email.date
+                        ? new Date(email.date).toLocaleString()
+                        : "Unknown"}
+                    </p>
 
-              <p className="gmail-snippet">
-                {email.snippet}
-              </p>
+                    <p className="gmail-snippet">
+                      {email.snippet}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="preview-email-btn"
+                      onClick={() => viewFullEmail(email.id)}
+                    >
+                      View Full Email
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </label>
-        ))}
-      </div>
-    )}
+          )}
 
-    {selectedEmails.length > 0 && (
-      <div className="gmail-selection">
-        <p>
-          <strong>{selectedEmails.length}</strong> email(s) selected
-        </p>
+          {selectedEmails.length > 0 && (
+            <div className="gmail-selection">
+              <p>
+                <strong>{selectedEmails.length}</strong> email(s) selected
+              </p>
 
-        <button disabled>
-          Import Selected Emails — Coming Soon
-        </button>
-      </div>
-    )}
-  </div>
-)}
-      {/* CREATE WORKSPACE */}
+              <button disabled>
+                Import Selected Emails — Coming Soon
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==========================================
+          FULL EMAIL PREVIEW POPUP
+      ========================================== */}
+
+      {showEmailPreview && (
+        <div
+          className="email-preview-overlay"
+          onClick={closeEmailPreview}
+        >
+          <div
+            className="email-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Email preview"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="email-preview-header">
+              <h2>Email Preview</h2>
+
+              <button
+                type="button"
+                className="close-preview-btn"
+                onClick={closeEmailPreview}
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingPreview ? (
+              <p>Loading full email...</p>
+            ) : previewError ? (
+              <p className="message">
+                Unable to load email: {previewError}
+              </p>
+            ) : previewEmail ? (
+              <>
+                <h3>{previewEmail.subject || "No Subject"}</h3>
+
+                <p>
+                  <strong>From:</strong>{" "}
+                  {previewEmail.from || "Unknown"}
+                </p>
+
+                <p>
+                  <strong>Date:</strong>{" "}
+                  {previewEmail.date
+                    ? new Date(previewEmail.date).toLocaleString()
+                    : "Unknown"}
+                </p>
+
+                <hr />
+
+<div className="email-preview-body">
+  {previewEmail.body
+    ? previewEmail.body
+        .replace(/\[https?:\/\/[^\]]+\]/g, "")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+    : "No email content available."}
+</div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          CREATE WORKSPACE
+      ========================================== */}
 
       <div className="dashboard-card">
         <h2>Create Newsletter Workspace</h2>
@@ -1594,7 +1641,9 @@ function toggleEmailSelection(emailId) {
         </form>
       </div>
 
-      {/* WORKSPACES */}
+      {/* ==========================================
+          WORKSPACES
+      ========================================== */}
 
       <div className="dashboard-card">
         <h2>My Workspaces</h2>
