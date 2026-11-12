@@ -82,6 +82,8 @@ class InvitationCreate(BaseModel):
     email: EmailStr
     role: str
 
+class NewsletterCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
 
 # ============================================================
 # BASIC ENDPOINTS
@@ -654,3 +656,146 @@ async def accept_invitation(
         "message": "Invitation accepted successfully",
         "workspace_id": str(invitation["workspace_id"])
     }
+    
+# ============================================================
+# CREATE NEWSLETTER
+# ============================================================
+
+@app.post(
+    "/api/workspaces/{workspace_id}/newsletters",
+    status_code=201
+)
+async def create_newsletter(
+    workspace_id: UUID,
+    newsletter: NewsletterCreate,
+    user=Depends(get_current_user)
+):
+    title = newsletter.title.strip()
+
+    if len(title) < 3:
+        raise HTTPException(
+            status_code=422,
+            detail="Newsletter title must contain at least 3 characters"
+        )
+
+    with engine.begin() as connection:
+
+        # Check workspace membership and role.
+        membership = connection.execute(
+            text("""
+                SELECT role
+                FROM public.workspace_members
+                WHERE workspace_id = :workspace_id
+                  AND user_id = :user_id
+            """),
+            {
+                "workspace_id": workspace_id,
+                "user_id": UUID(user["id"])
+            }
+        ).mappings().first()
+
+        if not membership:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not a member of this workspace"
+            )
+
+        # Faculty can view newsletters.
+        # Admins and editors can create them.
+        if membership["role"] not in ("admin", "editor"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins and editors can create newsletters"
+            )
+
+        result = connection.execute(
+            text("""
+                INSERT INTO public.newsletters
+                    (workspace_id, title, status)
+                VALUES
+                    (:workspace_id, :title, 'draft')
+                RETURNING id, workspace_id, title, status, created_at
+            """),
+            {
+                "workspace_id": workspace_id,
+                "title": title
+            }
+        )
+
+        created = result.mappings().one()
+
+    return {
+        "id": str(created["id"]),
+        "workspace_id": str(created["workspace_id"]),
+        "title": created["title"],
+        "status": created["status"],
+        "created_at": (
+            created["created_at"].isoformat()
+            if created["created_at"]
+            else None
+        )
+    }
+    
+    
+# ============================================================
+# LIST WORKSPACE NEWSLETTERS
+# ============================================================
+
+@app.get("/api/workspaces/{workspace_id}/newsletters")
+async def list_newsletters(
+    workspace_id: UUID,
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+
+        membership = connection.execute(
+            text("""
+                SELECT 1
+                FROM public.workspace_members
+                WHERE workspace_id = :workspace_id
+                  AND user_id = :user_id
+            """),
+            {
+                "workspace_id": workspace_id,
+                "user_id": UUID(user["id"])
+            }
+        ).first()
+
+        if not membership:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not a member of this workspace"
+            )
+
+        result = connection.execute(
+            text("""
+                SELECT
+                    id,
+                    workspace_id,
+                    title,
+                    status,
+                    created_at
+                FROM public.newsletters
+                WHERE workspace_id = :workspace_id
+                ORDER BY created_at DESC, id DESC
+            """),
+            {
+                "workspace_id": workspace_id
+            }
+        ).mappings().all()
+
+    return [
+        {
+            "id": str(row["id"]),
+            "workspace_id": str(row["workspace_id"]),
+            "title": row["title"],
+            "status": row["status"],
+            "created_at": (
+                row["created_at"].isoformat()
+                if row["created_at"]
+                else None
+            )
+        }
+        for row in result
+    ]
+    
