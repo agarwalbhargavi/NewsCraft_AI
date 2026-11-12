@@ -85,6 +85,9 @@ class InvitationCreate(BaseModel):
 class NewsletterCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
 
+class ArticleCreate(BaseModel):
+    heading: str = Field(min_length=3, max_length=200)
+    content: str = Field(min_length=10)
 # ============================================================
 # BASIC ENDPOINTS
 # ============================================================
@@ -799,3 +802,149 @@ async def list_newsletters(
         for row in result
     ]
     
+# ============================================================
+# CREATE ARTICLE
+# ============================================================
+
+@app.post("/api/newsletters/{newsletter_id}/articles", status_code=201)
+async def create_article(
+    newsletter_id: UUID,
+    article: ArticleCreate,
+    user=Depends(get_current_user)
+):
+    heading = article.heading.strip()
+    content = article.content.strip()
+
+    if len(heading) < 3 or len(content) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail="Heading or content is too short"
+        )
+
+    with engine.begin() as connection:
+
+        # Verify that the newsletter exists and the user
+        # has permission to create articles in its workspace.
+        membership = connection.execute(
+            text("""
+                SELECT wm.role
+                FROM public.newsletters n
+                JOIN public.workspace_members wm
+                  ON wm.workspace_id = n.workspace_id
+                WHERE n.id = :newsletter_id
+                  AND wm.user_id = :user_id
+            """),
+            {
+                "newsletter_id": newsletter_id,
+                "user_id": UUID(user["id"])
+            }
+        ).mappings().first()
+
+        if not membership:
+            raise HTTPException(
+                status_code=404,
+                detail="Newsletter not found or access denied"
+            )
+
+        if membership["role"] not in ("admin", "editor"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins and editors can create articles"
+            )
+
+        result = connection.execute(
+            text("""
+                INSERT INTO public.articles
+                    (newsletter_id, heading, content, status)
+                VALUES
+                    (:newsletter_id, :heading, :content, 'draft')
+                RETURNING id, newsletter_id, heading,
+                          content, status, created_at
+            """),
+            {
+                "newsletter_id": newsletter_id,
+                "heading": heading,
+                "content": content
+            }
+        )
+
+        created = result.mappings().one()
+
+    return {
+        "id": str(created["id"]),
+        "newsletter_id": str(created["newsletter_id"]),
+        "heading": created["heading"],
+        "content": created["content"],
+        "status": created["status"],
+        "created_at": (
+            created["created_at"].isoformat()
+            if created["created_at"]
+            else None
+        )
+    }
+    
+# ============================================================
+# LIST ARTICLES
+# ============================================================
+
+@app.get("/api/newsletters/{newsletter_id}/articles")
+async def list_articles(
+    newsletter_id: UUID,
+    user=Depends(get_current_user)
+):
+    with engine.connect() as connection:
+
+        membership = connection.execute(
+            text("""
+                SELECT 1
+                FROM public.newsletters n
+                JOIN public.workspace_members wm
+                  ON wm.workspace_id = n.workspace_id
+                WHERE n.id = :newsletter_id
+                  AND wm.user_id = :user_id
+            """),
+            {
+                "newsletter_id": newsletter_id,
+                "user_id": UUID(user["id"])
+            }
+        ).first()
+
+        if not membership:
+            raise HTTPException(
+                status_code=404,
+                detail="Newsletter not found or access denied"
+            )
+
+        articles = connection.execute(
+            text("""
+                SELECT
+                    id,
+                    newsletter_id,
+                    heading,
+                    content,
+                    status,
+                    created_at
+                FROM public.articles
+                WHERE newsletter_id = :newsletter_id
+                ORDER BY created_at DESC, id DESC
+            """),
+            {
+                "newsletter_id": newsletter_id
+            }
+        ).mappings().all()
+
+    return [
+        {
+            "id": str(article["id"]),
+            "newsletter_id": str(article["newsletter_id"]),
+            "heading": article["heading"],
+            "content": article["content"],
+            "status": article["status"],
+            "created_at": (
+                article["created_at"].isoformat()
+                if article["created_at"]
+                else None
+            )
+        }
+        for article in articles
+    ]
