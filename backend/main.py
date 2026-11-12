@@ -17,7 +17,7 @@ import httpx
 import base64
 import json
 import hmac
-
+import base64
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from cryptography.fernet import Fernet
@@ -1325,4 +1325,123 @@ async def list_gmail_messages(
         raise HTTPException(
             status_code=502,
             detail="Unable to retrieve Gmail messages"
+        )
+        
+# ============================================================
+# GET FULL GMAIL MESSAGE
+# ============================================================
+
+@app.get("/api/gmail/messages/{message_id}")
+async def get_full_gmail_message(
+    message_id: str,
+    user=Depends(get_current_user)
+):
+    # Validate the Gmail message ID.
+    if not message_id or not all(
+        char.isalnum() or char in "-_" for char in message_id
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid Gmail message ID"
+        )
+
+    # Find the authenticated user's Gmail connection.
+    with engine.connect() as connection:
+        gmail = connection.execute(
+            text("""
+                SELECT encrypted_refresh_token
+                FROM public.gmail_connections
+                WHERE user_id = :user_id
+            """),
+            {"user_id": UUID(user["id"])}
+        ).mappings().first()
+
+    if not gmail or not gmail["encrypted_refresh_token"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect Gmail before viewing messages"
+        )
+
+    # Decrypt the stored refresh token.
+    refresh_token = get_gmail_cipher().decrypt(
+        gmail["encrypted_refresh_token"].encode()
+    ).decode()
+
+    # Create Google credentials.
+    credentials = Credentials(
+        token=None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=GMAIL_SCOPES
+    )
+
+    try:
+        # Obtain a fresh Google access token.
+        credentials.refresh(GoogleRequest())
+
+        # Retrieve the complete Gmail message.
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+                headers={
+                    "Authorization": f"Bearer {credentials.token}"
+                },
+                params={"format": "full"}
+            )
+
+            response.raise_for_status()
+            message = response.json()
+
+        # Extract message headers.
+        headers = {
+            header["name"].lower(): header["value"]
+            for header in message.get("payload", {}).get("headers", [])
+        }
+
+        # Decode Gmail's base64url-encoded text.
+        def decode_body(encoded):
+            if not encoded:
+                return ""
+
+            try:
+                return base64.urlsafe_b64decode(
+                    encoded + "=" * (-len(encoded) % 4)
+                ).decode("utf-8", errors="replace")
+            except (ValueError, TypeError):
+                return ""
+
+        # Search recursively for a text/plain part.
+        def extract_plain_text(part):
+            if part.get("mimeType") == "text/plain":
+                return decode_body(
+                    part.get("body", {}).get("data", "")
+                )
+
+            for child in part.get("parts", []):
+                content = extract_plain_text(child)
+                if content:
+                    return content
+
+            return ""
+
+        body = extract_plain_text(message.get("payload", {}))
+
+        return {
+            "id": message_id,
+            "from": headers.get("from", "Unknown"),
+            "subject": headers.get("subject", "(No Subject)"),
+            "date": headers.get("date", ""),
+            "body": body,
+            "snippet": message.get("snippet", "")
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve full Gmail message"
         )
