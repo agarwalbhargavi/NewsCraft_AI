@@ -52,6 +52,18 @@ const [creatingNewsletter, setCreatingNewsletter] = useState(false);
 const [loadingNewsletters, setLoadingNewsletters] = useState(false);
 
 const [selectedNewsletter, setSelectedNewsletter] = useState(null);
+
+// ==========================================
+// ARTICLES
+// ==========================================
+
+const [articles, setArticles] = useState([]);
+const [articleHeading, setArticleHeading] = useState("");
+const [articleContent, setArticleContent] = useState("");
+
+const [showArticleForm, setShowArticleForm] = useState(false);
+const [creatingArticle, setCreatingArticle] = useState(false);
+const [loadingArticles, setLoadingArticles] = useState(false);
   // ==========================================
   // INVITATIONS
   // ==========================================
@@ -422,11 +434,88 @@ async function createNewsletter(event) {
 // OPEN NEWSLETTER
 // ==========================================
 
-function openNewsletter(newsletter) {
-  setSelectedNewsletter(newsletter);
-  setMessage("");
+// ==========================================
+// LOAD ARTICLES
+// ==========================================
+
+async function loadArticles(newsletterId) {
+  setLoadingArticles(true);
+
+  try {
+    const data = await authenticatedFetch(
+      `/api/newsletters/${newsletterId}/articles`
+    );
+
+    setArticles(data);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setLoadingArticles(false);
+  }
 }
 
+
+// ==========================================
+// OPEN NEWSLETTER
+// ==========================================
+
+async function openNewsletter(newsletter) {
+  setSelectedNewsletter(newsletter);
+  setArticles([]);
+  setShowArticleForm(false);
+  setMessage("");
+
+  await loadArticles(newsletter.id);
+}
+
+
+// ==========================================
+// CREATE ARTICLE
+// ==========================================
+
+async function createArticle(event) {
+  event.preventDefault();
+
+  if (!selectedNewsletter) return;
+
+  const heading = articleHeading.trim();
+  const content = articleContent.trim();
+
+  if (heading.length < 3 || content.length < 10) {
+    setMessage(
+      "Article heading must have at least 3 characters and content at least 10."
+    );
+    return;
+  }
+
+  setCreatingArticle(true);
+  setMessage("");
+
+  try {
+    await authenticatedFetch(
+      `/api/newsletters/${selectedNewsletter.id}/articles`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          heading,
+          content,
+        }),
+      }
+    );
+
+    setArticleHeading("");
+    setArticleContent("");
+    setShowArticleForm(false);
+
+    await loadArticles(selectedNewsletter.id);
+
+    setMessage("Article created successfully!");
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setCreatingArticle(false);
+  }
+}
   // ==========================================
   // GENERATE INVITATION
   // ==========================================
@@ -907,19 +996,102 @@ function openNewsletter(newsletter) {
 
         </div>
 
-        <div className="newsletter-empty">
+<div className="articles-section">
 
-          <h3>Newsletter Articles</h3>
+  <div className="section-header">
+    <h3>Newsletter Articles</h3>
 
-          <p>
-            No articles added yet.
+    {["admin", "editor"].includes(selectedWorkspace.role) && (
+      <button
+        onClick={() => {
+          setShowArticleForm(!showArticleForm);
+          setMessage("");
+        }}
+      >
+        {showArticleForm ? "Cancel" : "+ Add Article"}
+      </button>
+    )}
+  </div>
+
+  {/* ADD ARTICLE FORM */}
+
+  {showArticleForm && (
+    <div className="article-form">
+      <h3>Add New Article</h3>
+
+      <form onSubmit={createArticle}>
+        <label>Article Heading</label>
+
+        <input
+          type="text"
+          placeholder="e.g. Students Win National Hackathon"
+          value={articleHeading}
+          onChange={(event) =>
+            setArticleHeading(event.target.value)
+          }
+          minLength={3}
+          maxLength={200}
+          required
+        />
+
+        <label>Article Content</label>
+
+        <textarea
+          placeholder="Write the article paragraph here..."
+          value={articleContent}
+          onChange={(event) =>
+            setArticleContent(event.target.value)
+          }
+          rows={7}
+          minLength={10}
+          required
+        />
+
+        <button type="submit" disabled={creatingArticle}>
+          {creatingArticle ? "Saving..." : "Save Article"}
+        </button>
+      </form>
+    </div>
+  )}
+
+  {/* ARTICLE LIST */}
+
+  {loadingArticles ? (
+    <p>Loading articles...</p>
+  ) : articles.length === 0 ? (
+    <div className="newsletter-empty">
+      <h3>No Articles Yet</h3>
+      <p>Add your first article to this newsletter.</p>
+    </div>
+  ) : (
+    <div className="article-list">
+      {articles.map((article) => (
+        <div key={article.id} className="article-item">
+          <div className="article-item-header">
+            <h3>{article.heading}</h3>
+
+            <span className="newsletter-status">
+              {article.status}
+            </span>
+          </div>
+
+          <p className="article-content">
+            {article.content}
           </p>
 
-          <button disabled>
-            + Add Article — Coming Soon
-          </button>
-
+          <p className="article-date">
+            Created:{" "}
+            {article.created_at
+              ? new Date(article.created_at).toLocaleDateString()
+              : "Unknown"}
+          </p>
         </div>
+      ))}
+    </div>
+  )}
+
+  {message && <p className="message">{message}</p>}
+</div>
 
       </div>
 

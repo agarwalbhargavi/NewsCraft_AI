@@ -564,3 +564,84 @@ input:focus {
     width: 100%;
   }
 }
+
+/* ==========================================
+   ARTICLE MANAGEMENT
+========================================== */
+
+.articles-section {
+  margin-top: 30px;
+}
+
+.article-form {
+  margin: 20px 0;
+  padding: 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.article-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.article-form label {
+  font-weight: 600;
+  color: #334155;
+}
+
+.article-form input,
+.article-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.article-form textarea {
+  resize: vertical;
+}
+
+.article-form button {
+  width: fit-content;
+}
+
+.article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.article-item {
+  padding: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.article-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.article-item-header h3 {
+  margin: 0;
+}
+
+.article-content {
+  color: #475569;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.article-date {
+  font-size: 13px;
+  color: #64748b;
+}
