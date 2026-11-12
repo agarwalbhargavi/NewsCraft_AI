@@ -94,6 +94,15 @@ const [gmailStatus, setGmailStatus] = useState({
 const [gmailLoading, setGmailLoading] = useState(false);
 const [gmailConnecting, setGmailConnecting] = useState(false);
 const [gmailMessage, setGmailMessage] = useState("");
+
+// ==========================================
+// GMAIL INBOX
+// ==========================================
+
+const [gmailMessages, setGmailMessages] = useState([]);
+const [showGmailInbox, setShowGmailInbox] = useState(false);
+const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
+const [selectedEmails, setSelectedEmails] = useState([]);
   // ==========================================
   // INITIAL AUTHENTICATION
   // ==========================================
@@ -722,6 +731,38 @@ async function connectGmail() {
     setGmailMessage(error.message);
     setGmailConnecting(false);
   }
+}
+
+// ==========================================
+// FETCH GMAIL MESSAGES
+// ==========================================
+
+async function loadGmailMessages() {
+  setLoadingGmailMessages(true);
+  setGmailMessage("");
+
+  try {
+    const data = await authenticatedFetch("/api/gmail/messages");
+
+    setGmailMessages(data.messages || []);
+    setShowGmailInbox(true);
+  } catch (error) {
+    setGmailMessage(error.message);
+  } finally {
+    setLoadingGmailMessages(false);
+  }
+}
+
+// ==========================================
+// SELECT / DESELECT EMAILS
+// ==========================================
+
+function toggleEmailSelection(emailId) {
+  setSelectedEmails((previous) =>
+    previous.includes(emailId)
+      ? previous.filter((id) => id !== emailId)
+      : [...previous, emailId]
+  );
 }
   // ==========================================
   // LOADING SCREEN
@@ -1417,8 +1458,25 @@ async function connectGmail() {
       </p>
 
       <p>
-        You can now proceed to email browsing and importing.
-      </p>
+  Browse emails from your connected Gmail account.
+</p>
+
+<button
+  onClick={() => {
+    if (showGmailInbox) {
+      setShowGmailInbox(false);
+    } else {
+      loadGmailMessages();
+    }
+  }}
+  disabled={loadingGmailMessages}
+>
+  {loadingGmailMessages
+    ? "Loading Emails..."
+    : showGmailInbox
+    ? "Hide Gmail Inbox"
+    : "View Gmail Inbox"}
+</button>
     </>
   ) : (
     <>
@@ -1441,6 +1499,73 @@ async function connectGmail() {
     <p className="message">{gmailMessage}</p>
   )}
 </div>
+
+{/* ==========================================
+    GMAIL INBOX
+========================================== */}
+
+{gmailStatus.connected && showGmailInbox && (
+  <div className="dashboard-card gmail-inbox">
+    <div className="section-header">
+      <h2>Gmail Inbox</h2>
+
+      <button
+        onClick={loadGmailMessages}
+        disabled={loadingGmailMessages}
+      >
+        {loadingGmailMessages ? "Refreshing..." : "Refresh"}
+      </button>
+    </div>
+
+    <p>
+      Select the emails you want to include in your newsletter.
+    </p>
+
+    {gmailMessages.length === 0 ? (
+      <p>No emails found.</p>
+    ) : (
+      <div className="gmail-message-list">
+        {gmailMessages.map((email) => (
+          <label key={email.id} className="gmail-message">
+            <input
+              type="checkbox"
+              checked={selectedEmails.includes(email.id)}
+              onChange={() => toggleEmailSelection(email.id)}
+            />
+
+            <div className="gmail-message-content">
+              <h3>{email.subject}</h3>
+
+              <p>
+                <strong>From:</strong> {email.from}
+              </p>
+
+              <p>
+                <strong>Date:</strong> {email.date}
+              </p>
+
+              <p className="gmail-snippet">
+                {email.snippet}
+              </p>
+            </div>
+          </label>
+        ))}
+      </div>
+    )}
+
+    {selectedEmails.length > 0 && (
+      <div className="gmail-selection">
+        <p>
+          <strong>{selectedEmails.length}</strong> email(s) selected
+        </p>
+
+        <button disabled>
+          Import Selected Emails — Coming Soon
+        </button>
+      </div>
+    )}
+  </div>
+)}
       {/* CREATE WORKSPACE */}
 
       <div className="dashboard-card">

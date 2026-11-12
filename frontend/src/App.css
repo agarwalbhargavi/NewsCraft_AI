@@ -676,3 +676,87 @@ input:focus {
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* ==========================================
+   GMAIL INBOX
+========================================== */
+
+.gmail-inbox {
+  margin-top: 24px;
+}
+
+.gmail-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.gmail-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.gmail-message:hover {
+  background: #f8fafc;
+  border-color: #93c5fd;
+}
+
+.gmail-message input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 5px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.gmail-message-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.gmail-message-content h3 {
+  margin: 0 0 10px;
+  color: #1e293b;
+  font-size: 17px;
+}
+
+.gmail-message-content p {
+  margin: 6px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.gmail-snippet {
+  margin-top: 12px !important;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.gmail-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 24px;
+  padding: 18px;
+  background: #eff6ff;
+  border-radius: 10px;
+}
+
+.gmail-selection p {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .gmail-selection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
