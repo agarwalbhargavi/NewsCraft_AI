@@ -1,9 +1,13 @@
-📰 NewsCraft AI
+<h1 align="center">
+  📰 <strong>NEWSCRAFT AI</strong>
+</h1>
 
-AI-Powered Newsletter Automation Platform
+<h2 align="center">
+  <strong>AI-Powered Newsletter Automation Platform</strong>
+</h2>
 
 <p align="center">
-  <strong>From scattered emails to structured newsletters — all in one workspace.</strong>
+  <strong>From Scattered Emails to Professional Newsletters — Powered by AI</strong>
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/React-Frontend-61DAFB?logo=react&logoColor=black" />
