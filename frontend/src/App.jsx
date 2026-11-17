@@ -103,7 +103,17 @@ function App() {
   const [showGmailInbox, setShowGmailInbox] = useState(false);
   const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState([]);
+  // ==========================================
+// GMAIL SEARCH, FILTERS AND PAGINATION
+// ==========================================
 
+const [gmailSearch, setGmailSearch] = useState("");
+
+const [gmailStartDate, setGmailStartDate] = useState("");
+const [gmailEndDate, setGmailEndDate] = useState("");
+
+const [gmailPage, setGmailPage] = useState(1);
+const [gmailPageSize, setGmailPageSize] = useState(10);
   // ==========================================
   // FULL EMAIL PREVIEW
   // ==========================================
@@ -782,6 +792,72 @@ function App() {
         : [...previous, emailId]
     );
   }
+
+// ==========================================
+// FILTER GMAIL MESSAGES
+// ==========================================
+
+const filteredGmailMessages = gmailMessages.filter((email) => {
+  const search = gmailSearch.toLowerCase().trim();
+
+  const subject = (email.subject || "").toLowerCase();
+  const sender = (email.from || "").toLowerCase();
+  const snippet = (email.snippet || "").toLowerCase();
+
+  const matchesSearch =
+    !search ||
+    subject.includes(search) ||
+    sender.includes(search) ||
+    snippet.includes(search);
+
+  const emailDate = email.date
+    ? new Date(email.date)
+    : null;
+
+  const matchesStartDate =
+    !gmailStartDate ||
+    (emailDate &&
+      !Number.isNaN(emailDate.getTime()) &&
+      emailDate >= new Date(`${gmailStartDate}T00:00:00`));
+
+  const matchesEndDate =
+    !gmailEndDate ||
+    (emailDate &&
+      !Number.isNaN(emailDate.getTime()) &&
+      emailDate <= new Date(`${gmailEndDate}T23:59:59.999`));
+
+  return matchesSearch && matchesStartDate && matchesEndDate;
+});
+
+// ==========================================
+// PAGINATION
+// ==========================================
+
+const totalGmailPages = Math.max(
+  1,
+  Math.ceil(filteredGmailMessages.length / gmailPageSize)
+);
+
+const currentGmailPage = Math.min(
+  gmailPage,
+  totalGmailPages
+);
+
+const paginatedGmailMessages = filteredGmailMessages.slice(
+  (currentGmailPage - 1) * gmailPageSize,
+  currentGmailPage * gmailPageSize
+);
+
+// ==========================================
+// CLEAR FILTERS
+// ==========================================
+
+function clearGmailFilters() {
+  setGmailSearch("");
+  setGmailStartDate("");
+  setGmailEndDate("");
+  setGmailPage(1);
+}
 
   // ==========================================
   // LOADING SCREEN
@@ -1466,84 +1542,251 @@ function App() {
       </div>
 
       {/* ==========================================
-          GMAIL INBOX
-      ========================================== */}
+    GMAIL INBOX
+========================================== */}
 
-      {gmailStatus.connected && showGmailInbox && (
-        <div className="dashboard-card gmail-inbox">
-          <div className="section-header">
-            <h2>Gmail Inbox</h2>
+{gmailStatus.connected && showGmailInbox && (
+  <div className="dashboard-card gmail-inbox">
 
-            <button
-              onClick={loadGmailMessages}
-              disabled={loadingGmailMessages}
-            >
-              {loadingGmailMessages ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
+    <div className="section-header">
+      <h2>Gmail Inbox</h2>
 
-          <p>Select the emails you want to include in your newsletter.</p>
+      <button
+        onClick={loadGmailMessages}
+        disabled={loadingGmailMessages}
+      >
+        {loadingGmailMessages ? "Refreshing..." : "Refresh"}
+      </button>
+    </div>
 
-          {gmailMessages.length === 0 ? (
-            <p>No emails found.</p>
-          ) : (
-            <div className="gmail-message-list">
-              {gmailMessages.map((email) => (
-                <div key={email.id} className="gmail-message">
-                  <label className="gmail-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmails.includes(email.id)}
-                      onChange={() => toggleEmailSelection(email.id)}
-                      aria-label={`Select email: ${email.subject}`}
-                    />
-                  </label>
+    <p>
+      Search, filter and select emails for your newsletter.
+    </p>
 
-                  <div className="gmail-message-content">
-                    <h3>{email.subject}</h3>
+    {/* ======================================
+        SEARCH AND FILTERS
+    ====================================== */}
 
-                    <p>
-                      <strong>From:</strong> {email.from}
-                    </p>
+    <div className="gmail-filters">
 
-                    <p>
-                      <strong>Date:</strong>{" "}
-                      {email.date
-                        ? new Date(email.date).toLocaleString()
-                        : "Unknown"}
-                    </p>
+      <div className="gmail-filter-field gmail-search-field">
+        <label htmlFor="gmail-search">
+          Search Emails
+        </label>
 
-                    <p className="gmail-snippet">
-                      {email.snippet}
-                    </p>
+        <input
+          id="gmail-search"
+          type="search"
+          placeholder="Search subject, sender or email snippet..."
+          value={gmailSearch}
+          onChange={(event) => {
+            setGmailSearch(event.target.value);
+            setGmailPage(1);
+          }}
+        />
+      </div>
 
-                    <button
-                      type="button"
-                      className="preview-email-btn"
-                      onClick={() => viewFullEmail(email.id)}
-                    >
-                      View Full Email
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="gmail-filter-field">
+        <label htmlFor="gmail-start-date">
+          From Date
+        </label>
 
-          {selectedEmails.length > 0 && (
-            <div className="gmail-selection">
+        <input
+          id="gmail-start-date"
+          type="date"
+          value={gmailStartDate}
+          max={gmailEndDate || undefined}
+          onChange={(event) => {
+            setGmailStartDate(event.target.value);
+            setGmailPage(1);
+          }}
+        />
+      </div>
+
+      <div className="gmail-filter-field">
+        <label htmlFor="gmail-end-date">
+          To Date
+        </label>
+
+        <input
+          id="gmail-end-date"
+          type="date"
+          value={gmailEndDate}
+          min={gmailStartDate || undefined}
+          onChange={(event) => {
+            setGmailEndDate(event.target.value);
+            setGmailPage(1);
+          }}
+        />
+      </div>
+
+      <button
+        type="button"
+        className="gmail-clear-btn"
+        onClick={clearGmailFilters}
+      >
+        Clear Filters
+      </button>
+
+    </div>
+
+    {/* ======================================
+        EMAIL COUNT AND PAGE SIZE
+    ====================================== */}
+
+    <div className="gmail-results-bar">
+
+      <p>
+        Showing{" "}
+        <strong>{paginatedGmailMessages.length}</strong>
+        {" "}of{" "}
+        <strong>{filteredGmailMessages.length}</strong>
+        {" "}matching loaded emails
+      </p>
+
+      <div className="gmail-page-size">
+
+        <label htmlFor="gmail-page-size">
+          Emails per page:
+        </label>
+
+        <select
+          id="gmail-page-size"
+          value={gmailPageSize}
+          onChange={(event) => {
+            setGmailPageSize(Number(event.target.value));
+            setGmailPage(1);
+          }}
+        >
+          <option value={10}>10</option>
+          <option value={20}>20</option>
+          <option value={50}>50</option>
+        </select>
+
+      </div>
+
+    </div>
+
+    {/* ======================================
+        EMAIL LIST
+    ====================================== */}
+
+    {loadingGmailMessages ? (
+      <p>Loading emails...</p>
+    ) : paginatedGmailMessages.length === 0 ? (
+      <div className="gmail-empty">
+        <h3>No Emails Found</h3>
+        <p>Try changing your search or date filters.</p>
+      </div>
+    ) : (
+      <div className="gmail-message-list">
+
+        {paginatedGmailMessages.map((email) => (
+          <div key={email.id} className="gmail-message">
+
+            <label className="gmail-checkbox">
+              <input
+                type="checkbox"
+                checked={selectedEmails.includes(email.id)}
+                onChange={() => toggleEmailSelection(email.id)}
+                aria-label={`Select email: ${email.subject}`}
+              />
+            </label>
+
+            <div className="gmail-message-content">
+
+              <h3>{email.subject}</h3>
+
               <p>
-                <strong>{selectedEmails.length}</strong> email(s) selected
+                <strong>From:</strong> {email.from}
               </p>
 
-              <button disabled>
-                Import Selected Emails — Coming Soon
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+              <p>
+                <strong>Date:</strong>{" "}
+                {email.date
+                  ? new Date(email.date).toLocaleString()
+                  : "Unknown"}
+              </p>
 
+              <p className="gmail-snippet">
+                {email.snippet}
+              </p>
+
+              <button
+                type="button"
+                className="preview-email-btn"
+                onClick={() => viewFullEmail(email.id)}
+              >
+                View Full Email
+              </button>
+
+            </div>
+
+          </div>
+        ))}
+
+      </div>
+    )}
+
+    {/* ======================================
+        PAGINATION CONTROLS
+    ====================================== */}
+
+    {filteredGmailMessages.length > gmailPageSize && (
+      <div className="gmail-pagination">
+
+        <button
+          type="button"
+          className="gmail-page-btn"
+          disabled={currentGmailPage === 1}
+          onClick={() =>
+            setGmailPage(currentGmailPage - 1)
+          }
+        >
+          ← Previous
+        </button>
+
+        <span>
+          Page <strong>{currentGmailPage}</strong>
+          {" "}of{" "}
+          <strong>{totalGmailPages}</strong>
+        </span>
+
+        <button
+          type="button"
+          className="gmail-page-btn"
+          disabled={currentGmailPage >= totalGmailPages}
+          onClick={() =>
+            setGmailPage(currentGmailPage + 1)
+          }
+        >
+          Next →
+        </button>
+
+      </div>
+    )}
+
+    {/* ======================================
+        SELECTED EMAILS
+    ====================================== */}
+
+    {selectedEmails.length > 0 && (
+      <div className="gmail-selection">
+
+        <p>
+          <strong>{selectedEmails.length}</strong>
+          {" "}email(s) selected
+        </p>
+
+        <button disabled>
+          Import Selected Emails — Coming Soon
+        </button>
+
+      </div>
+    )}
+
+  </div>
+)}
       {/* ==========================================
           FULL EMAIL PREVIEW POPUP
       ========================================== */}
