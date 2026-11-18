@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import "./App.css";
 
@@ -103,7 +103,7 @@ function App() {
   const [showGmailInbox, setShowGmailInbox] = useState(false);
   const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState([]);
-  // ==========================================
+// ==========================================
 // GMAIL SEARCH, FILTERS AND PAGINATION
 // ==========================================
 
@@ -114,6 +114,13 @@ const [gmailEndDate, setGmailEndDate] = useState("");
 
 const [gmailPage, setGmailPage] = useState(1);
 const [gmailPageSize, setGmailPageSize] = useState(10);
+
+const [gmailNextPageToken, setGmailNextPageToken] = useState(null);
+const [gmailPageTokens, setGmailPageTokens] = useState([null]);
+
+const [gmailResultEstimate, setGmailResultEstimate] = useState(0);
+
+const gmailRequestId = useRef(0);
   // ==========================================
   // FULL EMAIL PREVIEW
   // ==========================================
@@ -723,25 +730,93 @@ const [gmailPageSize, setGmailPageSize] = useState(10);
     }
   }
 
-  // ==========================================
-  // FETCH GMAIL MESSAGES
-  // ==========================================
+// ==========================================
+// FETCH GMAIL MESSAGES
+// ==========================================
 
-  async function loadGmailMessages() {
-    setLoadingGmailMessages(true);
-    setGmailMessage("");
+async function loadGmailMessages(
+  pageToken = null,
+  pageNumber = 1,
+  filters = {}
+) {
+  const requestId = ++gmailRequestId.current;
 
-    try {
-      const data = await authenticatedFetch("/api/gmail/messages");
+  setLoadingGmailMessages(true);
+  setGmailMessage("");
 
-      setGmailMessages(data.messages || []);
-      setShowGmailInbox(true);
-    } catch (error) {
-      setGmailMessage(error.message);
-    } finally {
+  try {
+    const search = filters.search ?? gmailSearch;
+    const startDate = filters.startDate ?? gmailStartDate;
+    const endDate = filters.endDate ?? gmailEndDate;
+    const pageSize = filters.pageSize ?? gmailPageSize;
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new Error("From Date cannot be after To Date.");
+    }
+
+    const params = new URLSearchParams();
+
+    params.set("page_size", String(pageSize));
+
+    if (search.trim()) {
+      params.set("search", search.trim());
+    }
+
+    if (startDate) {
+      params.set("from_date", startDate);
+    }
+
+    if (endDate) {
+      params.set("to_date", endDate);
+    }
+
+    if (pageToken) {
+      params.set("page_token", pageToken);
+    }
+
+    const data = await authenticatedFetch(
+      `/api/gmail/messages?${params.toString()}`
+    );
+
+    // Debug response
+    console.log("Gmail API response:", data);
+
+    // Ignore outdated requests
+    if (requestId !== gmailRequestId.current) return;
+
+    // Validate response before accessing properties
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !Array.isArray(data.messages)
+    ) {
+      throw new Error(
+        "Unable to load Gmail messages. The API returned an invalid response."
+      );
+    }
+
+    setGmailMessages(data.messages);
+    setGmailNextPageToken(data.next_page_token ?? null);
+    setGmailResultEstimate(data.result_size_estimate ?? 0);
+
+    setGmailPage(pageNumber);
+    setShowGmailInbox(true);
+
+  } catch (error) {
+    if (requestId !== gmailRequestId.current) return;
+
+    console.error("Gmail loading error:", error);
+
+    setGmailMessage(error.message);
+    setGmailMessages([]);
+    setGmailNextPageToken(null);
+
+  } finally {
+    if (requestId === gmailRequestId.current) {
       setLoadingGmailMessages(false);
     }
   }
+}
 
   // ==========================================
   // VIEW FULL GMAIL MESSAGE
@@ -793,60 +868,43 @@ const [gmailPageSize, setGmailPageSize] = useState(10);
     );
   }
 
-// ==========================================
-// FILTER GMAIL MESSAGES
-// ==========================================
-
-const filteredGmailMessages = gmailMessages.filter((email) => {
-  const search = gmailSearch.toLowerCase().trim();
-
-  const subject = (email.subject || "").toLowerCase();
-  const sender = (email.from || "").toLowerCase();
-  const snippet = (email.snippet || "").toLowerCase();
-
-  const matchesSearch =
-    !search ||
-    subject.includes(search) ||
-    sender.includes(search) ||
-    snippet.includes(search);
-
-  const emailDate = email.date
-    ? new Date(email.date)
-    : null;
-
-  const matchesStartDate =
-    !gmailStartDate ||
-    (emailDate &&
-      !Number.isNaN(emailDate.getTime()) &&
-      emailDate >= new Date(`${gmailStartDate}T00:00:00`));
-
-  const matchesEndDate =
-    !gmailEndDate ||
-    (emailDate &&
-      !Number.isNaN(emailDate.getTime()) &&
-      emailDate <= new Date(`${gmailEndDate}T23:59:59.999`));
-
-  return matchesSearch && matchesStartDate && matchesEndDate;
-});
-
-// ==========================================
-// PAGINATION
+/// ==========================================
+// GMAIL SERVER-SIDE PAGINATION
 // ==========================================
 
-const totalGmailPages = Math.max(
-  1,
-  Math.ceil(filteredGmailMessages.length / gmailPageSize)
-);
+function nextGmailPage() {
+  if (!gmailNextPageToken || loadingGmailMessages) return;
 
-const currentGmailPage = Math.min(
-  gmailPage,
-  totalGmailPages
-);
+  const nextPage = gmailPage + 1;
+  const nextToken = gmailNextPageToken;
 
-const paginatedGmailMessages = filteredGmailMessages.slice(
-  (currentGmailPage - 1) * gmailPageSize,
-  currentGmailPage * gmailPageSize
-);
+  setGmailPageTokens((previous) => {
+    const updated = previous.slice(0, gmailPage);
+    updated.push(nextToken);
+    return updated;
+  });
+
+  loadGmailMessages(nextToken, nextPage);
+}
+
+function previousGmailPage() {
+  if (gmailPage <= 1 || loadingGmailMessages) return;
+
+  const previousPage = gmailPage - 1;
+  const previousToken = gmailPageTokens[previousPage - 1] || null;
+
+  loadGmailMessages(previousToken, previousPage);
+}
+
+// ==========================================
+// RESET PAGINATION
+// ==========================================
+
+function resetGmailPagination() {
+  setGmailPage(1);
+  setGmailPageTokens([null]);
+  setGmailNextPageToken(null);
+}
 
 // ==========================================
 // CLEAR FILTERS
@@ -856,8 +914,50 @@ function clearGmailFilters() {
   setGmailSearch("");
   setGmailStartDate("");
   setGmailEndDate("");
-  setGmailPage(1);
+
+  resetGmailPagination();
+
+  loadGmailMessages(null, 1, {
+    search: "",
+    startDate: "",
+    endDate: "",
+    pageSize: gmailPageSize,
+  });
 }
+
+// ==========================================
+// SEARCH GMAIL
+// ==========================================
+
+function searchGmailMessages() {
+  resetGmailPagination();
+  loadGmailMessages(null, 1);
+}
+
+// ==========================================
+// AUTOMATIC SEARCH WITH DEBOUNCE
+// ==========================================
+
+useEffect(() => {
+  if (!session?.user?.id) return;
+  if (!gmailStatus.connected || !showGmailInbox) return;
+
+  const timer = setTimeout(() => {
+    resetGmailPagination();
+    loadGmailMessages(null, 1);
+  }, 500);
+
+  return () => {
+    clearTimeout(timer);
+    gmailRequestId.current += 1;
+  };
+}, [
+  gmailSearch,
+  gmailStartDate,
+  gmailEndDate,
+  gmailPageSize,
+]);
+
 
   // ==========================================
   // LOADING SCREEN
@@ -1504,12 +1604,14 @@ function clearGmailFilters() {
 
             <button
               onClick={() => {
-                if (showGmailInbox) {
-                  setShowGmailInbox(false);
-                } else {
-                  loadGmailMessages();
-                }
-              }}
+  if (showGmailInbox) {
+    gmailRequestId.current += 1;
+    setShowGmailInbox(false);
+  } else {
+    resetGmailPagination();
+    loadGmailMessages(null, 1);
+  }
+}}
               disabled={loadingGmailMessages}
             >
               {loadingGmailMessages
@@ -1541,7 +1643,7 @@ function clearGmailFilters() {
         )}
       </div>
 
-      {/* ==========================================
+    {/* ==========================================
     GMAIL INBOX
 ========================================== */}
 
@@ -1552,7 +1654,13 @@ function clearGmailFilters() {
       <h2>Gmail Inbox</h2>
 
       <button
-        onClick={loadGmailMessages}
+        type="button"
+        onClick={() =>
+          loadGmailMessages(
+            gmailPageTokens[gmailPage - 1] || null,
+            gmailPage
+          )
+        }
         disabled={loadingGmailMessages}
       >
         {loadingGmailMessages ? "Refreshing..." : "Refresh"}
@@ -1563,9 +1671,7 @@ function clearGmailFilters() {
       Search, filter and select emails for your newsletter.
     </p>
 
-    {/* ======================================
-        SEARCH AND FILTERS
-    ====================================== */}
+    {/* SEARCH AND FILTERS */}
 
     <div className="gmail-filters">
 
@@ -1577,12 +1683,11 @@ function clearGmailFilters() {
         <input
           id="gmail-search"
           type="search"
-          placeholder="Search subject, sender or email snippet..."
+          placeholder="Search subject, sender or email content..."
           value={gmailSearch}
-          onChange={(event) => {
-            setGmailSearch(event.target.value);
-            setGmailPage(1);
-          }}
+          onChange={(event) =>
+            setGmailSearch(event.target.value)
+          }
         />
       </div>
 
@@ -1596,10 +1701,9 @@ function clearGmailFilters() {
           type="date"
           value={gmailStartDate}
           max={gmailEndDate || undefined}
-          onChange={(event) => {
-            setGmailStartDate(event.target.value);
-            setGmailPage(1);
-          }}
+          onChange={(event) =>
+            setGmailStartDate(event.target.value)
+          }
         />
       </div>
 
@@ -1613,10 +1717,9 @@ function clearGmailFilters() {
           type="date"
           value={gmailEndDate}
           min={gmailStartDate || undefined}
-          onChange={(event) => {
-            setGmailEndDate(event.target.value);
-            setGmailPage(1);
-          }}
+          onChange={(event) =>
+            setGmailEndDate(event.target.value)
+          }
         />
       </div>
 
@@ -1630,18 +1733,22 @@ function clearGmailFilters() {
 
     </div>
 
-    {/* ======================================
-        EMAIL COUNT AND PAGE SIZE
-    ====================================== */}
+    {/* RESULTS AND PAGE SIZE */}
 
     <div className="gmail-results-bar">
 
       <p>
         Showing{" "}
-        <strong>{paginatedGmailMessages.length}</strong>
-        {" "}of{" "}
-        <strong>{filteredGmailMessages.length}</strong>
-        {" "}matching loaded emails
+        <strong>{gmailMessages.length}</strong>
+        {" "}emails on page{" "}
+        <strong>{gmailPage}</strong>
+        {gmailResultEstimate > 0 && (
+          <>
+            {" "}— approximately{" "}
+            <strong>{gmailResultEstimate}</strong>
+            {" "}matching emails
+          </>
+        )}
       </p>
 
       <div className="gmail-page-size">
@@ -1655,7 +1762,6 @@ function clearGmailFilters() {
           value={gmailPageSize}
           onChange={(event) => {
             setGmailPageSize(Number(event.target.value));
-            setGmailPage(1);
           }}
         >
           <option value={10}>10</option>
@@ -1664,31 +1770,35 @@ function clearGmailFilters() {
         </select>
 
       </div>
-
     </div>
 
-    {/* ======================================
-        EMAIL LIST
-    ====================================== */}
+    {/* EMAIL LIST */}
 
     {loadingGmailMessages ? (
       <p>Loading emails...</p>
-    ) : paginatedGmailMessages.length === 0 ? (
+    ) : gmailMessages.length === 0 ? (
       <div className="gmail-empty">
         <h3>No Emails Found</h3>
-        <p>Try changing your search or date filters.</p>
+        <p>
+          Try changing your search or date filters.
+        </p>
       </div>
     ) : (
       <div className="gmail-message-list">
 
-        {paginatedGmailMessages.map((email) => (
-          <div key={email.id} className="gmail-message">
+        {gmailMessages.map((email) => (
+          <div
+            key={email.id}
+            className="gmail-message"
+          >
 
             <label className="gmail-checkbox">
               <input
                 type="checkbox"
                 checked={selectedEmails.includes(email.id)}
-                onChange={() => toggleEmailSelection(email.id)}
+                onChange={() =>
+                  toggleEmailSelection(email.id)
+                }
                 aria-label={`Select email: ${email.subject}`}
               />
             </label>
@@ -1715,50 +1825,47 @@ function clearGmailFilters() {
               <button
                 type="button"
                 className="preview-email-btn"
-                onClick={() => viewFullEmail(email.id)}
+                onClick={() =>
+                  viewFullEmail(email.id)
+                }
               >
                 View Full Email
               </button>
 
             </div>
-
           </div>
         ))}
 
       </div>
     )}
 
-    {/* ======================================
-        PAGINATION CONTROLS
-    ====================================== */}
+    {/* SERVER-SIDE PAGINATION */}
 
-    {filteredGmailMessages.length > gmailPageSize && (
+    {(gmailPage > 1 || gmailNextPageToken) && (
       <div className="gmail-pagination">
 
         <button
           type="button"
           className="gmail-page-btn"
-          disabled={currentGmailPage === 1}
-          onClick={() =>
-            setGmailPage(currentGmailPage - 1)
+          disabled={
+            gmailPage === 1 || loadingGmailMessages
           }
+          onClick={previousGmailPage}
         >
           ← Previous
         </button>
 
         <span>
-          Page <strong>{currentGmailPage}</strong>
-          {" "}of{" "}
-          <strong>{totalGmailPages}</strong>
+          Page <strong>{gmailPage}</strong>
         </span>
 
         <button
           type="button"
           className="gmail-page-btn"
-          disabled={currentGmailPage >= totalGmailPages}
-          onClick={() =>
-            setGmailPage(currentGmailPage + 1)
+          disabled={
+            !gmailNextPageToken || loadingGmailMessages
           }
+          onClick={nextGmailPage}
         >
           Next →
         </button>
@@ -1766,9 +1873,7 @@ function clearGmailFilters() {
       </div>
     )}
 
-    {/* ======================================
-        SELECTED EMAILS
-    ====================================== */}
+    {/* SELECTED EMAILS */}
 
     {selectedEmails.length > 0 && (
       <div className="gmail-selection">
@@ -1787,6 +1892,8 @@ function clearGmailFilters() {
 
   </div>
 )}
+
+
       {/* ==========================================
           FULL EMAIL PREVIEW POPUP
       ========================================== */}
