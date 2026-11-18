@@ -8,7 +8,8 @@ import os
 import hashlib
 import secrets
 
-from datetime import datetime, timedelta, timezone, date
+from datetime import datetime, timedelta, timezone, date, time
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 from uuid import UUID
 
@@ -1307,26 +1308,45 @@ async def list_gmail_messages(
             detail="Unable to refresh Gmail access token"
         )
 
-    # Build Gmail's native search query.
+        # ========================================================
+    # BUILD GMAIL SEARCH QUERY
+    # ========================================================
+
     query_parts = []
 
     if search.strip():
         query_parts.append(search.strip())
 
+    # Use Indian Standard Time for date filtering
+    filter_timezone = ZoneInfo("Asia/Kolkata")
+
     if from_date:
+        start_datetime = datetime.combine(
+            from_date,
+            time.min,
+            tzinfo=filter_timezone
+        )
+
         query_parts.append(
-            f"after:{from_date.strftime('%Y/%m/%d')}"
+            f"after:{int(start_datetime.timestamp())}"
         )
 
     if to_date:
-        # Gmail's 'before' operator is exclusive.
-        # Add one day to include the selected To Date.
-        inclusive_end = to_date + timedelta(days=1)
+        end_datetime = datetime.combine(
+            to_date + timedelta(days=1),
+            time.min,
+            tzinfo=filter_timezone
+        )
+
         query_parts.append(
-            f"before:{inclusive_end.strftime('%Y/%m/%d')}"
+            f"before:{int(end_datetime.timestamp())}"
         )
 
     gmail_query = " ".join(query_parts)
+
+    # ========================================================
+    # REQUEST PARAMETERS
+    # ========================================================
 
     params = {
         "maxResults": page_size
@@ -1342,8 +1362,13 @@ async def list_gmail_messages(
         "Authorization": f"Bearer {credentials.token}"
     }
 
+    # ========================================================
+    # FETCH GMAIL MESSAGES
+    # ========================================================
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
+
             response = await client.get(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                 headers=headers,
@@ -1357,6 +1382,7 @@ async def list_gmail_messages(
             messages = []
 
             for item in message_ids:
+
                 detail = await client.get(
                     "https://gmail.googleapis.com/gmail/v1/users/me/messages/"
                     + item["id"],
@@ -1376,16 +1402,28 @@ async def list_gmail_messages(
 
                 email_headers = {
                     header["name"].lower(): header["value"]
-                    for header in data.get("payload", {}).get("headers", [])
+                    for header in data.get(
+                        "payload", {}
+                    ).get("headers", [])
                 }
+
+                if data.get("internalDate"):
+                    email_date = datetime.fromtimestamp(
+                        int(data["internalDate"]) / 1000,
+                        tz=timezone.utc
+                    ).isoformat()
+                else:
+                    email_date = email_headers.get("date", "")
 
                 messages.append({
                     "id": item["id"],
-                    "from": email_headers.get("from", "Unknown"),
+                    "from": email_headers.get(
+                        "from", "Unknown"
+                    ),
                     "subject": email_headers.get(
                         "subject", "(No Subject)"
                     ),
-                    "date": email_headers.get("date", ""),
+                    "date": email_date,
                     "snippet": data.get("snippet", "")
                 })
 
@@ -1405,6 +1443,7 @@ async def list_gmail_messages(
                 f"(Google returned {exc.response.status_code})"
             )
         )
+
     except httpx.RequestError:
         raise HTTPException(
             status_code=502,
