@@ -8,7 +8,7 @@ import os
 import hashlib
 import secrets
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from urllib.parse import quote
 from uuid import UUID
 
@@ -26,7 +26,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -1234,13 +1234,31 @@ async def gmail_status(
     }
     
 # ============================================================
-# LIST GMAIL MESSAGES
+# LIST GMAIL MESSAGES - SEARCH + PAGINATION
 # ============================================================
+
+from datetime import date
+from fastapi import Query
+from google.auth.exceptions import RefreshError
+
 
 @app.get("/api/gmail/messages")
 async def list_gmail_messages(
+    search: str = Query(default="", max_length=500),
+    from_date: date | None = None,
+    to_date: date | None = None,
+    page_token: str | None = Query(default=None, max_length=2048),
+    page_size: int = Query(default=10, ge=1, le=50),
     user=Depends(get_current_user)
 ):
+    # Validate date range.
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(
+            status_code=422,
+            detail="From Date cannot be after To Date"
+        )
+
+    # Find the current user's Gmail connection.
     with engine.connect() as connection:
         gmail = connection.execute(
             text("""
@@ -1257,9 +1275,15 @@ async def list_gmail_messages(
             detail="Connect Gmail before viewing messages"
         )
 
-    refresh_token = get_gmail_cipher().decrypt(
-        gmail["encrypted_refresh_token"].encode()
-    ).decode()
+    try:
+        refresh_token = get_gmail_cipher().decrypt(
+            gmail["encrypted_refresh_token"].encode()
+        ).decode()
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to read Gmail connection"
+        )
 
     credentials = Credentials(
         token=None,
@@ -1272,27 +1296,71 @@ async def list_gmail_messages(
 
     try:
         credentials.refresh(GoogleRequest())
+    except RefreshError:
+        raise HTTPException(
+            status_code=401,
+            detail="Gmail authorization expired. Please reconnect Gmail."
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to refresh Gmail access token"
+        )
 
-        async with httpx.AsyncClient(timeout=20) as client:
+    # Build Gmail's native search query.
+    query_parts = []
+
+    if search.strip():
+        query_parts.append(search.strip())
+
+    if from_date:
+        query_parts.append(
+            f"after:{from_date.strftime('%Y/%m/%d')}"
+        )
+
+    if to_date:
+        # Gmail's 'before' operator is exclusive.
+        # Add one day to include the selected To Date.
+        inclusive_end = to_date + timedelta(days=1)
+        query_parts.append(
+            f"before:{inclusive_end.strftime('%Y/%m/%d')}"
+        )
+
+    gmail_query = " ".join(query_parts)
+
+    params = {
+        "maxResults": page_size
+    }
+
+    if gmail_query:
+        params["q"] = gmail_query
+
+    if page_token:
+        params["pageToken"] = page_token
+
+    headers = {
+        "Authorization": f"Bearer {credentials.token}"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                headers={
-                    "Authorization": f"Bearer {credentials.token}"
-                },
-                params={"maxResults": 20}
+                headers=headers,
+                params=params
             )
 
             response.raise_for_status()
-            message_ids = response.json().get("messages", [])
+            result = response.json()
 
+            message_ids = result.get("messages", [])
             messages = []
 
             for item in message_ids:
                 detail = await client.get(
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{item['id']}",
-                    headers={
-                        "Authorization": f"Bearer {credentials.token}"
-                    },
+                    "https://gmail.googleapis.com/gmail/v1/users/me/messages/"
+                    + item["id"],
+                    headers=headers,
                     params={
                         "format": "metadata",
                         "metadataHeaders": [
@@ -1306,27 +1374,42 @@ async def list_gmail_messages(
                 detail.raise_for_status()
                 data = detail.json()
 
-                headers = {
+                email_headers = {
                     header["name"].lower(): header["value"]
                     for header in data.get("payload", {}).get("headers", [])
                 }
 
                 messages.append({
                     "id": item["id"],
-                    "from": headers.get("from", "Unknown"),
-                    "subject": headers.get("subject", "(No Subject)"),
-                    "date": headers.get("date", ""),
+                    "from": email_headers.get("from", "Unknown"),
+                    "subject": email_headers.get(
+                        "subject", "(No Subject)"
+                    ),
+                    "date": email_headers.get("date", ""),
                     "snippet": data.get("snippet", "")
                 })
 
-        return {"messages": messages}
+        return {
+            "messages": messages,
+            "next_page_token": result.get("nextPageToken"),
+            "result_size_estimate": result.get(
+                "resultSizeEstimate", 0
+            )
+        }
 
-    except Exception:
+    except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
-            detail="Unable to retrieve Gmail messages"
+            detail=(
+                "Gmail API request failed "
+                f"(Google returned {exc.response.status_code})"
+            )
         )
-        
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to reach Gmail API"
+        )
 # ============================================================
 # GET FULL GMAIL MESSAGE
 # ============================================================
