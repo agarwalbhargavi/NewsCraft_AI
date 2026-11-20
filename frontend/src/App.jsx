@@ -44,6 +44,9 @@ function App() {
   // ==========================================
 
   const [newsletters, setNewsletters] = useState([]);
+  // Newsletters available for Gmail import
+const [allNewsletters, setAllNewsletters] = useState([]);
+const [selectedImportNewsletter, setSelectedImportNewsletter] = useState("");
   const [newsletterTitle, setNewsletterTitle] = useState("");
 
   const [showNewsletterForm, setShowNewsletterForm] = useState(false);
@@ -103,6 +106,13 @@ function App() {
   const [showGmailInbox, setShowGmailInbox] = useState(false);
   const [loadingGmailMessages, setLoadingGmailMessages] = useState(false);
   const [selectedEmails, setSelectedEmails] = useState([]);
+  // ==========================================
+// IMPORT SELECTED GMAIL EMAILS
+// ==========================================
+
+const [importNewsletterId, setImportNewsletterId] = useState("");
+const [importingEmails, setImportingEmails] = useState(false);
+const [importMessage, setImportMessage] = useState("");
 // ==========================================
 // GMAIL SEARCH, FILTERS AND PAGINATION
 // ==========================================
@@ -303,7 +313,38 @@ const gmailRequestId = useRef(0);
       setFetchingWorkspaces(false);
     }
   }
+// ==========================================
+// LOAD ALL EDITABLE NEWSLETTERS
+// ==========================================
 
+async function loadAllNewsletters() {
+  try {
+    const workspaceData = await authenticatedFetch(
+      "/api/workspaces"
+    );
+
+    const editableWorkspaces = workspaceData.filter(
+      (workspace) =>
+        ["admin", "editor"].includes(workspace.role)
+    );
+
+    const results = await Promise.all(
+      editableWorkspaces.map((workspace) =>
+        authenticatedFetch(
+          `/api/workspaces/${workspace.id}/newsletters`
+        )
+      )
+    );
+
+    const allNewsletters = results.flat();
+
+    setNewsletters(allNewsletters);
+
+  } catch (error) {
+    console.error("Unable to load newsletters:", error);
+    setImportMessage(error.message);
+  }
+}
   // ==========================================
   // CHECK GMAIL CONNECTION
   // ==========================================
@@ -493,7 +534,46 @@ const gmailRequestId = useRef(0);
       setLoadingNewsletters(false);
     }
   }
+// ==========================================
+// LOAD ALL NEWSLETTERS FOR GMAIL IMPORT
+// ==========================================
 
+async function loadAllNewsletters() {
+  try {
+    // Fetch user's workspaces
+    const workspaceData = await authenticatedFetch(
+      "/api/workspaces"
+    );
+
+    // Fetch newsletters from every workspace
+    const results = await Promise.all(
+      workspaceData.map(async (workspace) => {
+        const data = await authenticatedFetch(
+          `/api/workspaces/${workspace.id}/newsletters`
+        );
+
+        return data.map((newsletter) => ({
+          ...newsletter,
+          workspace_name: workspace.name,
+        }));
+      })
+    );
+
+    // Combine all newsletters
+    const combinedNewsletters = results.flat();
+
+    setAllNewsletters(combinedNewsletters);
+
+    console.log(
+      "Loaded newsletters for Gmail import:",
+      combinedNewsletters
+    );
+
+  } catch (error) {
+    console.error("Failed to load newsletters:", error);
+    setGmailMessage(error.message);
+  }
+}
   // ==========================================
   // CREATE NEWSLETTER
   // ==========================================
@@ -867,7 +947,92 @@ async function loadGmailMessages(
         : [...previous, emailId]
     );
   }
+// ==========================================
+// IMPORT SELECTED EMAILS INTO NEWSLETTER
+// ==========================================
 
+async function importSelectedEmails() {
+  if (selectedEmails.length === 0) {
+    setImportMessage("Please select at least one email.");
+    return;
+  }
+
+  if (!importNewsletterId) {
+    setImportMessage("Please select a newsletter.");
+    return;
+  }
+
+  setImportingEmails(true);
+  setImportMessage("");
+
+  let successCount = 0;
+  let failedCount = 0;
+
+  try {
+    for (const emailId of selectedEmails) {
+      try {
+        // Step 1: Fetch full email content
+        const email = await authenticatedFetch(
+          `/api/gmail/messages/${encodeURIComponent(emailId)}`
+        );
+
+        // Step 2: Prepare article heading
+        const heading = (
+          email.subject || "Untitled Email"
+        ).trim().slice(0, 200);
+
+        // Step 3: Prepare article content
+        const content = (
+          email.body || email.snippet || ""
+        ).trim();
+
+        if (heading.length < 3 || content.length < 10) {
+          failedCount++;
+          continue;
+        }
+
+        // Step 4: Save article in selected newsletter
+        await authenticatedFetch(
+          `/api/newsletters/${importNewsletterId}/articles`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              heading,
+              content,
+            }),
+          }
+        );
+
+        successCount++;
+
+      } catch (error) {
+        console.error(
+          `Failed to import email ${emailId}:`,
+          error
+        );
+
+        failedCount++;
+      }
+    }
+
+    // Step 5: Display result
+    setImportMessage(
+      `${successCount} email(s) imported successfully.` +
+      (failedCount > 0
+        ? ` ${failedCount} email(s) could not be imported.`
+        : "")
+    );
+
+    if (successCount > 0) {
+      setSelectedEmails([]);
+    }
+
+  } catch (error) {
+    setImportMessage(error.message);
+  } finally {
+    setImportingEmails(false);
+  }
+}
 /// ==========================================
 // GMAIL SERVER-SIDE PAGINATION
 // ==========================================
@@ -1570,79 +1735,89 @@ useEffect(() => {
         </p>
       </div>
 
-      {/* ==========================================
-          GMAIL INTEGRATION
-      ========================================== */}
+ {/* ==========================================
+    GMAIL INTEGRATION
+========================================== */}
 
-      <div className="dashboard-card gmail-card">
-        <div className="section-header">
-          <h2>Gmail Integration</h2>
+<div className="dashboard-card gmail-card">
+  <div className="section-header">
+    <h2>Gmail Integration</h2>
 
-          <span
-            className={
-              gmailStatus.connected
-                ? "gmail-badge connected"
-                : "gmail-badge disconnected"
-            }
-          >
-            {gmailStatus.connected ? "Connected" : "Not Connected"}
-          </span>
-        </div>
+    <span
+      className={
+        gmailStatus.connected
+          ? "gmail-badge connected"
+          : "gmail-badge disconnected"
+      }
+    >
+      {gmailStatus.connected ? "Connected" : "Not Connected"}
+    </span>
+  </div>
 
-        {gmailLoading ? (
-          <p>Checking Gmail connection...</p>
-        ) : gmailStatus.connected ? (
-          <>
-            <p>Your Gmail account is connected to NewsCraft AI.</p>
+  {gmailLoading ? (
+    <p>Checking Gmail connection...</p>
+  ) : gmailStatus.connected ? (
+    <>
+      <p>Your Gmail account is connected to NewsCraft AI.</p>
 
-            <p>
-              <strong>Connected account:</strong>{" "}
-              {gmailStatus.email}
-            </p>
+      <p>
+        <strong>Connected account:</strong>{" "}
+        {gmailStatus.email}
+      </p>
 
-            <p>Browse emails from your connected Gmail account.</p>
+      <p>Browse emails from your connected Gmail account.</p>
 
-            <button
-              onClick={() => {
-  if (showGmailInbox) {
-    gmailRequestId.current += 1;
-    setShowGmailInbox(false);
-  } else {
-    resetGmailPagination();
-    loadGmailMessages(null, 1);
-  }
-}}
-              disabled={loadingGmailMessages}
-            >
-              {loadingGmailMessages
-                ? "Loading Emails..."
-                : showGmailInbox
-                ? "Hide Gmail Inbox"
-                : "View Gmail Inbox"}
-            </button>
-          </>
-        ) : (
-          <>
-            <p>
-              Connect your Gmail account to import department
-              achievements, faculty updates, and event emails
-              directly into your newsletters.
-            </p>
+      {/* VIEW / HIDE GMAIL INBOX */}
 
-            <button
-              onClick={connectGmail}
-              disabled={gmailConnecting}
-            >
-              {gmailConnecting ? "Connecting..." : "Connect Gmail"}
-            </button>
-          </>
-        )}
+      <button
+        type="button"
+        onClick={() => {
+          if (showGmailInbox) {
+            gmailRequestId.current += 1;
+            setShowGmailInbox(false);
+          } else {
+  resetGmailPagination();
 
-        {gmailMessage && (
-          <p className="message">{gmailMessage}</p>
-        )}
-      </div>
+  // Load newsletters for the import dropdown
+  loadAllNewsletters();
 
+  // Load Gmail messages
+  loadGmailMessages(null, 1);
+}
+        }}
+        disabled={loadingGmailMessages}
+      >
+        {loadingGmailMessages
+          ? "Loading Emails..."
+          : showGmailInbox
+          ? "Hide Gmail Inbox"
+          : "View Gmail Inbox"}
+      </button>
+    </>
+  ) : (
+    <>
+      <p>
+        Connect your Gmail account to import department
+        achievements, faculty updates, and event emails
+        directly into your newsletters.
+      </p>
+
+      <button
+        type="button"
+        onClick={connectGmail}
+        disabled={gmailConnecting}
+      >
+        {gmailConnecting ? "Connecting..." : "Connect Gmail"}
+      </button>
+    </>
+  )}
+
+  {/* GMAIL STATUS / ERROR MESSAGE */}
+
+  {gmailMessage && (
+    <p className="message">{gmailMessage}</p>
+  )}
+</div>
     {/* ==========================================
     GMAIL INBOX
 ========================================== */}
@@ -1873,22 +2048,91 @@ useEffect(() => {
       </div>
     )}
 
-    {/* SELECTED EMAILS */}
+{/* ==========================================
+    IMPORT SELECTED EMAILS
+========================================== */}
 
-    {selectedEmails.length > 0 && (
-      <div className="gmail-selection">
+{selectedEmails.length > 0 && (
+  <div className="gmail-selection">
 
-        <p>
-          <strong>{selectedEmails.length}</strong>
-          {" "}email(s) selected
-        </p>
+    <h3>Import Emails into Newsletter</h3>
 
-        <button disabled>
-          Import Selected Emails — Coming Soon
-        </button>
+    <p>
+      <strong>{selectedEmails.length}</strong>{" "}
+      email(s) selected
+    </p>
 
-      </div>
+    {/* CHOOSE NEWSLETTER */}
+
+    <label htmlFor="import-newsletter">
+      Choose Newsletter
+    </label>
+
+    <select
+      id="import-newsletter"
+      value={importNewsletterId}
+      onChange={(event) => {
+        setImportNewsletterId(event.target.value);
+      }}
+      disabled={importingEmails}
+    >
+      <option value="">
+        -- Select Newsletter --
+      </option>
+
+      {allNewsletters.map((newsletter) => (
+        <option
+          key={newsletter.id}
+          value={newsletter.id}
+        >
+          {newsletter.title}
+          {newsletter.workspace_name
+            ? ` (${newsletter.workspace_name})`
+            : ""}
+        </option>
+      ))}
+    </select>
+
+    {/* IMPORT BUTTON */}
+
+    <button
+      type="button"
+      onClick={importSelectedEmails}
+      disabled={
+        importingEmails ||
+        !importNewsletterId ||
+        selectedEmails.length === 0
+      }
+    >
+      {importingEmails
+        ? "Importing Emails..."
+        : `Import ${selectedEmails.length} Email(s)`}
+    </button>
+
+    {/* CLEAR SELECTION */}
+
+    <button
+      type="button"
+      className="secondary-btn"
+      onClick={() => {
+        setSelectedEmails([]);
+        setImportMessage("");
+      }}
+      disabled={importingEmails}
+    >
+      Clear Selection
+    </button>
+
+    {/* SUCCESS / ERROR MESSAGE */}
+
+    {importMessage && (
+      <p className="message">
+        {importMessage}
+      </p>
     )}
+
+  </div>
+)}
 
   </div>
 )}
