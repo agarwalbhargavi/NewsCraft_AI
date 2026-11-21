@@ -1257,3 +1257,47 @@ input[type="checkbox"] {
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* AI Article Generation */
+
+.article-ai-section {
+  margin-top: 15px;
+}
+
+.article-ai-section button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ai-preview {
+  margin-top: 15px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.ai-preview h4 {
+  margin-bottom: 12px;
+}
+
+.ai-preview textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.ai-preview-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}

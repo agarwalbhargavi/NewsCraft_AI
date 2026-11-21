@@ -62,21 +62,15 @@ const [selectedImportNewsletter, setSelectedImportNewsletter] = useState("");
   const [articles, setArticles] = useState([]);
   const [articleHeading, setArticleHeading] = useState("");
   const [articleContent, setArticleContent] = useState("");
-
+// AI Article Generation
+const [generatingArticleId, setGeneratingArticleId] = useState(null);
+const [editingArticleId, setEditingArticleId] = useState(null);
+const [generatedArticleContent, setGeneratedArticleContent] = useState("");
+const [savingGeneratedArticle, setSavingGeneratedArticle] = useState(false);
   const [showArticleForm, setShowArticleForm] = useState(false);
   const [creatingArticle, setCreatingArticle] = useState(false);
   const [loadingArticles, setLoadingArticles] = useState(false);
-// ==========================================
-// AI ARTICLE GENERATION
-// ==========================================
 
-const [generatingArticleId, setGeneratingArticleId] = useState(null);
-
-const [editingArticleId, setEditingArticleId] = useState(null);
-
-const [generatedArticleContent, setGeneratedArticleContent] = useState("");
-
-const [savingGeneratedArticle, setSavingGeneratedArticle] = useState(false);
   // ==========================================
   // INVITATIONS
   // ==========================================
@@ -617,6 +611,71 @@ async function loadAllNewsletters() {
       setLoadingArticles(false);
     }
   }
+// Generate newsletter article using Gemini AI
+async function generateArticleWithAI(article) {
+  if (!selectedNewsletter) return;
+
+  setGeneratingArticleId(article.id);
+  setEditingArticleId(null);
+  setGeneratedArticleContent("");
+  setMessage("");
+
+  try {
+    const data = await authenticatedFetch(
+      `/api/newsletters/${selectedNewsletter.id}/generate-article`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          heading: article.heading,
+          content: article.content,
+        }),
+      }
+    );
+
+    setGeneratedArticleContent(data.generated_content);
+    setEditingArticleId(article.id);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setGeneratingArticleId(null);
+  }
+}
+
+// Save approved AI-generated article
+async function saveGeneratedArticle(article) {
+  if (!selectedNewsletter) return;
+
+  const content = generatedArticleContent.trim();
+
+  if (content.length < 10) {
+    setMessage("Article content must contain at least 10 characters.");
+    return;
+  }
+
+  setSavingGeneratedArticle(true);
+  setMessage("");
+
+  try {
+    await authenticatedFetch(`/api/articles/${article.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        heading: article.heading,
+        content: content,
+      }),
+    });
+
+    await loadArticles(selectedNewsletter.id);
+
+    setEditingArticleId(null);
+    setGeneratedArticleContent("");
+
+    setMessage("AI-generated article saved successfully!");
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setSavingGeneratedArticle(false);
+  }
+}
 
   // ==========================================
   // OPEN NEWSLETTER
