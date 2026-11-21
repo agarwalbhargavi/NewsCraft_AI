@@ -66,7 +66,17 @@ const [selectedImportNewsletter, setSelectedImportNewsletter] = useState("");
   const [showArticleForm, setShowArticleForm] = useState(false);
   const [creatingArticle, setCreatingArticle] = useState(false);
   const [loadingArticles, setLoadingArticles] = useState(false);
+// ==========================================
+// AI ARTICLE GENERATION
+// ==========================================
 
+const [generatingArticleId, setGeneratingArticleId] = useState(null);
+
+const [editingArticleId, setEditingArticleId] = useState(null);
+
+const [generatedArticleContent, setGeneratedArticleContent] = useState("");
+
+const [savingGeneratedArticle, setSavingGeneratedArticle] = useState(false);
   // ==========================================
   // INVITATIONS
   // ==========================================
@@ -317,34 +327,7 @@ const gmailRequestId = useRef(0);
 // LOAD ALL EDITABLE NEWSLETTERS
 // ==========================================
 
-async function loadAllNewsletters() {
-  try {
-    const workspaceData = await authenticatedFetch(
-      "/api/workspaces"
-    );
 
-    const editableWorkspaces = workspaceData.filter(
-      (workspace) =>
-        ["admin", "editor"].includes(workspace.role)
-    );
-
-    const results = await Promise.all(
-      editableWorkspaces.map((workspace) =>
-        authenticatedFetch(
-          `/api/workspaces/${workspace.id}/newsletters`
-        )
-      )
-    );
-
-    const allNewsletters = results.flat();
-
-    setNewsletters(allNewsletters);
-
-  } catch (error) {
-    console.error("Unable to load newsletters:", error);
-    setImportMessage(error.message);
-  }
-}
   // ==========================================
   // CHECK GMAIL CONNECTION
   // ==========================================
@@ -695,7 +678,94 @@ async function loadAllNewsletters() {
       setCreatingArticle(false);
     }
   }
+// ==========================================
+// GENERATE ARTICLE WITH AI
+// ==========================================
 
+async function generateArticleWithAI(article) {
+
+  if (!selectedNewsletter) return;
+
+  setGeneratingArticleId(article.id);
+  setEditingArticleId(null);
+  setGeneratedArticleContent("");
+  setMessage("");
+
+  try {
+
+    const data = await authenticatedFetch(
+      `/api/newsletters/${selectedNewsletter.id}/generate-article`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          heading: article.heading,
+          content: article.content,
+        }),
+      }
+    );
+
+    setGeneratedArticleContent(data.generated_content);
+
+    setEditingArticleId(article.id);
+
+  } catch (error) {
+
+    setMessage(error.message);
+
+  } finally {
+
+    setGeneratingArticleId(null);
+
+  }
+}
+// ==========================================
+// SAVE AI GENERATED ARTICLE
+// ==========================================
+
+async function saveGeneratedArticle(article) {
+
+  if (!selectedNewsletter) return;
+
+  const content = generatedArticleContent.trim();
+
+  if (content.length < 10) {
+    setMessage("Article content must contain at least 10 characters.");
+    return;
+  }
+
+  setSavingGeneratedArticle(true);
+  setMessage("");
+
+  try {
+
+    await authenticatedFetch(
+      `/api/articles/${article.id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          heading: article.heading,
+          content,
+        }),
+      }
+    );
+
+    await loadArticles(selectedNewsletter.id);
+
+    setEditingArticleId(null);
+    setGeneratedArticleContent("");
+
+    setMessage("AI-generated article saved successfully!");
+
+  } catch (error) {
+
+    setMessage(error.message);
+
+  } finally {
+
+    setSavingGeneratedArticle(false);
+
+  }
+}
   // ==========================================
   // GENERATE INVITATION
   // ==========================================
@@ -1576,9 +1646,80 @@ useEffect(() => {
                             </span>
                           </div>
 
-                          <p className="article-content">
-                            {article.content}
-                          </p>
+                          {/* ORIGINAL ARTICLE CONTENT */}
+
+<p className="article-content">
+  {article.content}
+</p>
+
+{/* AI ARTICLE GENERATION */}
+
+{["admin", "editor"].includes(selectedWorkspace.role) && (
+  <div className="article-ai-section">
+
+    <button
+      type="button"
+      onClick={() => generateArticleWithAI(article)}
+      disabled={
+        generatingArticleId !== null ||
+        savingGeneratedArticle
+      }
+    >
+      {generatingArticleId === article.id
+        ? "✨ Generating..."
+        : "✨ Generate with AI"}
+    </button>
+
+    {/* GENERATED ARTICLE PREVIEW */}
+
+    {editingArticleId === article.id && (
+      <div className="ai-preview">
+
+        <h4>AI-Generated Article Preview</h4>
+
+        <p>
+          Review and edit the generated content before saving.
+        </p>
+
+        <textarea
+          value={generatedArticleContent}
+          onChange={(event) =>
+            setGeneratedArticleContent(event.target.value)
+          }
+          rows={8}
+          disabled={savingGeneratedArticle}
+        />
+
+        <div className="ai-preview-actions">
+
+          <button
+            type="button"
+            onClick={() => saveGeneratedArticle(article)}
+            disabled={savingGeneratedArticle}
+          >
+            {savingGeneratedArticle
+              ? "Saving..."
+              : "Save AI Article"}
+          </button>
+
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              setEditingArticleId(null);
+              setGeneratedArticleContent("");
+            }}
+            disabled={savingGeneratedArticle}
+          >
+            Cancel
+          </button>
+
+        </div>
+      </div>
+    )}
+
+  </div>
+)}
 
                           <p className="article-date">
                             Created:{" "}
